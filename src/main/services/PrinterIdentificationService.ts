@@ -84,6 +84,7 @@ export class PrinterIdentificationService {
       combined.includes('pos 58') ||
       combined.includes('veer') ||
       combined.includes('58mm') ||
+      combined.includes('receipt') ||
       combined.includes('olivetti') ||
       combined.includes('prt80') ||
       combined.includes('xprinter') ||
@@ -121,13 +122,28 @@ export class PrinterIdentificationService {
 
     // =============================================
     // STRATEGY 3: Local Driver Folder Presence Priority
-    // If JOSH driver package exists on Desktop, map USB printer to JOSH!
+    // Check local driver presence for VEER and JOSH
     // =============================================
+    const veerExePaths = [
+      'C:\\Users\\omen\\OneDrive\\Desktop\\VEER Thermal printer files\\POS58Setup_20210916.exe',
+      'C:\\Users\\omen\\Downloads\\VEER Thermal printer files\\POS58Setup_20210916.exe',
+      path.resolve(process.cwd(), 'backend/src/config/veer-files/POS58Setup_20210916.exe'),
+    ];
+
     const joshExePaths = [
       'C:\\Users\\omen\\OneDrive\\Desktop\\josh-files\\Win Driver Driver JOSH Label Printer.exe',
       'C:\\Users\\omen\\OneDrive\\Desktop\\josh-files\\DTPWeb-Inst-2.1.2022.1230.exe',
       path.resolve(process.cwd(), 'backend/src/config/josh-files/Win Driver Driver JOSH Label Printer.exe'),
     ];
+
+    if (combined.includes('pos') || combined.includes('receipt') || combined.includes('58')) {
+      for (const vPath of veerExePaths) {
+        if (fs.existsSync(vPath)) {
+          logger.info(`[PrinterIdentificationService] Found VEER Driver package at "${vPath}". Assigning hardware to [VEER].`);
+          return 'VEER';
+        }
+      }
+    }
 
     for (const jPath of joshExePaths) {
       if (fs.existsSync(jPath)) {

@@ -348,12 +348,25 @@ export class TestPrintService {
         const exact = list.find((p: any) => String(p.Name || '').toLowerCase() === requestedName.toLowerCase());
         if (exact) return exact.Name;
 
-        // 2. Partial match for JOSH / DP27 / LD0801 / Label Printer
-        const joshMatch = list.find((p: any) => {
-          const n = String(p.Name || '').toLowerCase();
-          return n.includes('ld0801') || n.includes('dp27') || n.includes('detong') || n.includes('josh') || n.includes('label');
-        });
-        if (joshMatch) return joshMatch.Name;
+        // 2. Partial match based on requested brand / printer type
+        const isVeerRequest = requestedName.toLowerCase().includes('pos58') || 
+                              requestedName.toLowerCase().includes('pos-58') || 
+                              requestedName.toLowerCase().includes('veer') || 
+                              requestedName.toLowerCase().includes('receipt');
+
+        if (isVeerRequest) {
+          const veerMatch = list.find((p: any) => {
+            const n = String(p.Name || '').toLowerCase();
+            return n.includes('pos58') || n.includes('pos-58') || n.includes('veer') || n.includes('receipt');
+          });
+          if (veerMatch) return veerMatch.Name;
+        } else {
+          const joshMatch = list.find((p: any) => {
+            const n = String(p.Name || '').toLowerCase();
+            return n.includes('ld0801') || n.includes('dp27') || n.includes('detong') || n.includes('josh') || n.includes('label');
+          });
+          if (joshMatch) return joshMatch.Name;
+        }
 
         // 3. Default printer
         const defaultPrt = list.find((p: any) => p.Default === true);

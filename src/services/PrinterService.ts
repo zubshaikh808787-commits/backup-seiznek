@@ -706,7 +706,8 @@ export class PrinterService implements IPrinterService {
       const found = osPrinters.find(p => 
         p.name.toLowerCase().includes('pos58') ||
         p.name.toLowerCase().includes('pos-58') ||
-        p.name.toLowerCase().includes('veer')
+        p.name.toLowerCase().includes('veer') ||
+        p.name.toLowerCase().includes('receipt')
       );
 
       if (found) {

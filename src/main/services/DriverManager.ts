@@ -133,6 +133,7 @@ export class DriverManager {
 
   private async installVeerDriverPackage(): Promise<{ success: boolean; log: string }> {
     const candidates = [
+      'C:\\Users\\omen\\OneDrive\\Desktop\\VEER Thermal printer files\\POS58Setup_20210916.exe',
       'C:\\Users\\omen\\Downloads\\VEER Thermal printer files\\POS58Setup_20210916.exe',
       'C:\\Users\\omen\\Downloads\\VEER Thermal printer files\\Â■┤╬┐¬Àó╬─ÁÁ-ðíã▒\\58Setupðíã▒Ã²Â».exe',
       'C:\\Users\\omen\\Downloads\\VEER Thermal printer files\\Â■┤╬┐¬Àó╬─ÁÁ-ðíã▒\\POS58Setup_20190329.exe',
@@ -145,23 +146,42 @@ export class DriverManager {
 
     if (os.platform() === 'win32') {
       try {
-        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Add-PrinterDriver -Name 'POS58 Printer'; Add-Printer -Name 'POS58 Printer' -DriverName 'POS58 Printer' -PortName 'USB001'"`;
-        await execPromise(psEnsureQueue);
-        logger.info('[DriverManager] Ensured OS Spooler Queue "POS58 Printer" on port USB001 ✓');
-
         if (driverExePath) {
           try {
             logger.info(`[DriverManager] Executing VEER Driver Installer: ${driverExePath}`);
-            const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Start-Process -FilePath '${driverExePath}' -Wait"`;
-            await execPromise(psCmd);
+            const psRunInstaller = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Start-Process -FilePath '${driverExePath}' -Verb RunAs -Wait"`;
+            await execPromise(psRunInstaller);
           } catch (eExe: any) {
             logger.warn(`[DriverManager] VEER driver installer notice: ${eExe.message}`);
           }
         }
-        return { success: true, log: 'VEER POS58 Printer Driver installed successfully.' };
+
+        // Dynamically discover registered driver name (POS58, POS-58, Generic / Text Only)
+        const psGetDrivers = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterDriver -ErrorAction SilentlyContinue | Select-Object Name | ConvertTo-Json"`;
+        let matchedDriver = 'POS58';
+        try {
+          const { stdout } = await execPromise(psGetDrivers);
+          if (stdout && stdout.trim() !== '') {
+            const parsed = JSON.parse(stdout);
+            const drvList: any[] = Array.isArray(parsed) ? parsed : [parsed];
+            const found = drvList.find((d: any) => {
+              const dName = String(d.Name || '').toLowerCase();
+              return dName.includes('pos58') || dName.includes('pos-58') || dName.includes('58mm') || dName.includes('veer');
+            });
+            if (found && found.Name) {
+              matchedDriver = found.Name;
+            }
+          }
+        } catch (eDrv) {}
+
+        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'POS58 Printer' -DriverName '${matchedDriver}' -PortName 'USB001' }"`;
+        await execPromise(psEnsureQueue);
+        logger.info(`[DriverManager] Ensured OS Spooler Queue "POS58 Printer" using driver "${matchedDriver}" on port USB001 ✓`);
+
+        return { success: true, log: `VEER POS58 Printer Driver (${matchedDriver}) installed and queue "POS58 Printer" registered successfully.` };
       } catch (err: any) {
         logger.warn(`[DriverManager] VEER driver setup notice: ${err.message}`);
-        return { success: true, log: 'VEER Driver package ready.' };
+        return { success: true, log: `VEER Driver package processed. Notice: ${err.message}` };
       }
     }
     return { success: true, log: 'VEER Driver package execution completed.' };

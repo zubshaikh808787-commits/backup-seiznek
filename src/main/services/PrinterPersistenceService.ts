@@ -46,20 +46,25 @@ export class PrinterPersistenceService {
   async saveOrUpdatePrinter(printer: Partial<SavedPrinter>): Promise<{ printerId: string; savedPrinters: SavedPrinter[] }> {
     const data = this.loadConfig();
     const name = printer.name || 'USB Printer';
+    const connectionType = printer.connectionType || 'USB';
     const targetId = printer.id || `seznik-${name.replace(/\s+/g, '-').toLowerCase()}`;
 
-    // Deduplication check: Match by ID or Name
-    const existingIndex = data.savedPrinters.findIndex(p => p.id === targetId || p.name.toLowerCase() === name.toLowerCase());
+    // Deduplication check: Match by ID, or by (Name + ConnectionType) so a USB
+    // queue and a Bluetooth device that happen to share a display name don't collide.
+    const existingIndex = data.savedPrinters.findIndex(
+      p => p.id === targetId || (p.name.toLowerCase() === name.toLowerCase() && p.connectionType === connectionType)
+    );
 
     const savedRecord: SavedPrinter = {
       id: targetId,
       name,
       driverName: printer.driverName || `${name} Driver`,
       portName: printer.portName || 'USB001',
-      connectionType: 'USB',
+      connectionType,
       isDefault: printer.isDefault ?? true,
       printerType: printer.printerType || 'RECEIPT',
       savedAt: new Date().toISOString(),
+      macAddress: printer.macAddress ?? null,
     };
 
     if (savedRecord.isDefault) {

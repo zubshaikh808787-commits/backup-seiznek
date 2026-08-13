@@ -15,6 +15,7 @@ enum ConnectionType {
   NETWORK
   SERIAL
   VIRTUAL_COM
+  BLUETOOTH
 }
 
 enum PrinterType {
@@ -78,6 +79,7 @@ model Printer {
   vendorId         String?
   productId        String?
   ipAddress        String?
+  macAddress       String?
   portName         String?         // COM3, USB001, LPT1
   printerType      PrinterType     @default(RECEIPT)
   paperWidthMm     Int             @default(80)

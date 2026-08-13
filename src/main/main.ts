@@ -9,6 +9,7 @@ import { USBService } from '../services/USBService';
 import { ConfigurationService } from '../services/ConfigurationService';
 import { LoggingService } from '../services/LoggingService';
 import { PrinterSetupOrchestrator } from './services/PrinterSetupOrchestrator';
+import { BluetoothPrinterService } from './services/BluetoothPrinterService';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -21,6 +22,7 @@ const usbService = new USBService();
 const configService = new ConfigurationService();
 const loggingService = new LoggingService();
 const orchestrator = new PrinterSetupOrchestrator();
+const bluetoothService = new BluetoothPrinterService();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -50,6 +52,7 @@ function createWindow() {
 
   orchestrator.setWindow(mainWindow);
   orchestrator.startUsbMonitoring();
+  bluetoothService.setWindow(mainWindow);
 
   // Run V1 automated setup automatically on window load
   mainWindow.webContents.on('did-finish-load', () => {
@@ -65,7 +68,8 @@ function createWindow() {
     usbService,
     configService,
     loggingService,
-    orchestrator
+    orchestrator,
+    bluetoothService
   );
 
   mainWindow.on('closed', () => {

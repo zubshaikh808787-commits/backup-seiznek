@@ -1,0 +1,61 @@
+{
+  "name": "seznik-printer-manager",
+  "version": "1.0.0",
+  "description": "Automated Installation, Configuration and Management Desktop Suite for SEZNIK Printers",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "tsc -p tsconfig.node.json && electron .",
+    "electron:build": "npm run build && electron-builder",
+    "usb:diagnose": "node scripts/usb-diagnose.js",
+    "server:start": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\",\\\"esModuleInterop\\\":true}\" backend/src/server.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "keywords": [
+    "printer",
+    "seznik",
+    "electron",
+    "react",
+    "thermal-printer",
+    "hardware-automation"
+  ],
+  "author": "SEZNIK Engineering Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "adm-zip": "^0.5.10",
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "framer-motion": "^11.0.8",
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.3",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.24",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.35",
+    "prisma": "^5.10.0",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.4"
+  }
+}

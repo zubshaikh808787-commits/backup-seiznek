@@ -1,0 +1,28 @@
+{
+  "appId": "com.seznik.printermanager",
+  "productName": "SEZNIK Printer Manager",
+  "directories": {
+    "output": "dist-app"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": false
+  },
+  "mac": {
+    "category": "public.app-category.utilities",
+    "target": ["dmg"]
+  }
+}

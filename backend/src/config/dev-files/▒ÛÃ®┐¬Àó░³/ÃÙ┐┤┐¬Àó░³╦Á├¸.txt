@@ -1,0 +1,28 @@
+﻿1 特别提示
+！！！建议每个要使用开发包的客户，一定要先运行测试程序。
+！！！完全没问题了，才开始看开发包。
+！！！测试出任何问题，都要先解决问题。
+
+2 开发包按照系统分类，支持以下五种系统
+    安卓：
+        android_as
+    苹果手机系统：
+        ios_xcode
+    苹果电脑系统：
+        macos_xcode
+    Linux系统：
+        linux_make（嵌入式linux可能需要专门编译对应平台的开发包）
+    Windows系统：
+    	windows_csharp（C#）
+    	windows_qt（QT）
+    	windows_vs_cpp（VC/C++）
+    	windows_java（java）
+
+3 每个开发包里面都有生成好的apk或exe，可以直接测试。
+  每个开发包里面，都包含6个测试程序，如下：
+    samplepos   带自动回传功能，票据打印
+    samplepage  带自动回传功能，页模式打印
+    samplelabel 带自动回传功能，标签打印
+    samplepos_withoutautoreply   无自动回传功能，票据打印
+    samplepage_withoutautoreply  无自动回传功能，页模式打印
+    samplelabel_withoutautoreply 无自动回传功能，标签打印

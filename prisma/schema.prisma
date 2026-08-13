@@ -1,0 +1,189 @@
+// Prisma Schema for SEZNIK Printer Manager Database
+// Database: PostgreSQL
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ConnectionType {
+  USB
+  NETWORK
+  SERIAL
+  VIRTUAL_COM
+}
+
+enum PrinterType {
+  RECEIPT
+  LABEL
+  RECEIPT_AND_LABEL
+  WIFI
+  USB_STANDARD
+}
+
+enum InstallationStatus {
+  PENDING
+  DOWNLOADING
+  INSTALLING
+  SUCCESS
+  FAILED
+  ROLLED_BACK
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+  DEBUG
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   @default("CUSTOMER") // CUSTOMER, ADMIN, TECHNICIAN
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  logs      InstallationLog[]
+}
+
+model SupportedDevice {
+  id              String         @id @default(uuid())
+  modelName       String         @unique
+  vendorId        String         // Hex e.g. "0x0FE6"
+  productId       String         // Hex e.g. "0x811E"
+  printerType     PrinterType    @default(RECEIPT)
+  paperWidthMm    Int            @default(80) // 58, 80, 104
+  commandLanguage String         @default("ESC/POS") // ESC/POS, TSPL, ZPL, CPCL
+  supportsDualMode Boolean       @default(false) // Receipt + Label 2-in-1 capability
+  drivers         Driver[]
+  firmwares       FirmwareVersion[]
+  sdks            SDKVersion[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([vendorId, productId])
+}
+
+model Printer {
+  id               String          @id @default(uuid())
+  name             String
+  modelNumber      String
+  serialNumber     String?         @unique
+  connectionType   ConnectionType  @default(USB)
+  vendorId         String?
+  productId        String?
+  ipAddress        String?
+  portName         String?         // COM3, USB001, LPT1
+  printerType      PrinterType     @default(RECEIPT)
+  paperWidthMm     Int             @default(80)
+  printerLanguage  String          @default("ESC/POS")
+  isDualMode       Boolean         @default(false)
+  
+  // Versions
+  installedDriverVersion   String?
+  installedFirmwareVersion String?
+  installedSdkVersion      String?
+
+  status           String          @default("DISCONNECTED") // DISCONNECTED, SEARCHING, CONNECTED, READY, ERROR
+  healthStatus     String          @default("HEALTHY")      // HEALTHY, WARNING, CRITICAL
+
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  installationLogs InstallationLog[]
+}
+
+model Driver {
+  id                String          @id @default(uuid())
+  version           String
+  supportedOs       String          // WINDOWS, MACOS, LINUX
+  architecture      String          // x64, x86, arm64
+  packageType       String          // EXE, INF, MSI, PKG
+  downloadUrl       String
+  checksumSha256    String
+  fileSize          BigInt
+  isDualReceiptLabel Boolean        @default(false)
+
+  supportedDeviceId String
+  supportedDevice   SupportedDevice @relation(fields: [supportedDeviceId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([supportedDeviceId, version, supportedOs])
+}
+
+model SDKVersion {
+  id                String          @id @default(uuid())
+  version           String
+  supportedOs       String          // WINDOWS, MACOS
+  downloadUrl       String
+  checksumSha256    String
+  fileSize          BigInt
+  apiDocsUrl        String?
+
+  supportedDeviceId String
+  supportedDevice   SupportedDevice @relation(fields: [supportedDeviceId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model FirmwareVersion {
+  id                String          @id @default(uuid())
+  version           String
+  releaseNotes      String?
+  downloadUrl       String
+  checksumSha256    String
+  fileSize          BigInt
+  isMandatory       Boolean         @default(false)
+
+  supportedDeviceId String
+  supportedDevice   SupportedDevice @relation(fields: [supportedDeviceId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model InstallationLog {
+  id              String             @id @default(uuid())
+  actionType      String             // DRIVER_INSTALL, FIRMWARE_UPDATE, SDK_INSTALL, USB_HOTPLUG
+  status          InstallationStatus @default(PENDING)
+  details         String
+  errorCode       String?
+  errorMessage    String?
+  
+  printerId       String?
+  printer         Printer?           @relation(fields: [printerId], references: [id], onDelete: SetNull)
+
+  userId          String?
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime           @default(now())
+}
+
+model Setting {
+  id                  String   @id @default(uuid())
+  key                 String   @unique
+  value               String
+  description         String?
+  updatedAt           DateTime @updatedAt
+}
+
+model TestLabel {
+  id               String   @id @default(uuid())
+  printerBrand     String   @unique // JOSH, VEER
+  labelType        String   @default("TEST") // TEST
+  imageDataBase64  String   
+  widthMm          Int      @default(40)
+  heightMm         Int      @default(40)
+  barcodeValue     String   @default("12345678")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+

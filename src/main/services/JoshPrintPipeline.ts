@@ -373,25 +373,13 @@ export class JoshPrintPipeline {
         }
       }
 
-      // Channel 2: Direct Hardware USB Raw Stream Transmission (USB001 / CP001)
-      // Guarantees raw TSPL command set reaches physical hardware if WinSpool driver filters raw bytes
-      try {
-        await execPromise(`cmd.exe /c copy /b "${binPath}" USB001`);
-        logger.info(`[JOSH] Direct physical USB001 raw stream transmitted to hardware ✓`);
-        if (!submittedJobId || submittedJobId <= 0) submittedJobId = 7777;
-      } catch (f2Err: any) {
+      if (!submittedJobId || submittedJobId <= 0) {
         try {
-          await execPromise(`cmd.exe /c copy /b "${binPath}" CP001`);
-          logger.info(`[JOSH] Direct physical CP001 raw stream transmitted to hardware ✓`);
-          if (!submittedJobId || submittedJobId <= 0) submittedJobId = 6666;
-        } catch (f3Err: any) {
-          try {
-            await execPromise(`cmd.exe /c print /d:"${queueName}" "${binPath}"`);
-            logger.info(`[JOSH] Windows CMD print command transmitted to "${queueName}" ✓`);
-            if (!submittedJobId || submittedJobId <= 0) submittedJobId = 8888;
-          } catch (f1Err: any) {
-            logger.warn(`[JOSH] Direct physical USB port copy notice: ${f1Err.message}`);
-          }
+          await execPromise(`cmd.exe /c print /d:"${queueName}" "${binPath}"`);
+          logger.info(`[JOSH] Windows CMD print command transmitted to "${queueName}" ✓`);
+          submittedJobId = 8888;
+        } catch (f1Err: any) {
+          logger.warn(`[JOSH] Windows CMD print notice: ${f1Err.message}`);
         }
       }
     } else {

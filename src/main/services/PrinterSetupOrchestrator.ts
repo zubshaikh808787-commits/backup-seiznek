@@ -298,18 +298,32 @@ export class PrinterSetupOrchestrator {
 
   async triggerManualTestPrint(): Promise<JoshTestPrintResult> {
     const currentState = this.getState();
-    if (!currentState.usbConnected || !currentState.queueName) {
-      return {
-        success: false,
-        stage: 'USB_DETECTION',
-        code: 'NO_USB_PRINTER',
-        printerName: 'USB Printer',
-        queueName: currentState.queueName || 'None',
-        message: 'No USB printer connected to test.',
-      };
+    let queueName = currentState.queueName;
+    let brand = currentState.brand;
+
+    if (!queueName || queueName.trim() === '' || queueName.toLowerCase() === 'none') {
+      const driverCheckVeer = await this.driverManager.checkDriverInstalled('VEER');
+      const driverCheckJosh = await this.driverManager.checkDriverInstalled('JOSH');
+      
+      if (driverCheckVeer.installed) {
+        queueName = driverCheckVeer.queueName || 'POS58 Printer';
+        brand = 'VEER';
+      } else if (driverCheckJosh.installed) {
+        queueName = driverCheckJosh.queueName || 'LD0801 Label Printer';
+        brand = 'JOSH';
+      } else {
+        queueName = 'POS58 Printer';
+        brand = 'VEER';
+      }
     }
-    const profile = this.profileService.getProfile(currentState.brand);
-    return this.testPrintService.executeAutomatedTestPrint(currentState.queueName, profile);
+
+    if (!brand || brand === 'UNSUPPORTED') {
+      brand = queueName.toLowerCase().includes('pos58') || queueName.toLowerCase().includes('veer') || queueName.toLowerCase().includes('receipt') ? 'VEER' : 'JOSH';
+    }
+
+    logger.info(`[PrinterSetupOrchestrator] Manual test print invoked for target queue "${queueName}" [Brand: ${brand}]`);
+    const profile = this.profileService.getProfile(brand);
+    return this.testPrintService.executeAutomatedTestPrint(queueName, profile);
   }
 
   /**

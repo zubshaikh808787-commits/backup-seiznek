@@ -212,6 +212,31 @@ export type TestPrintStage =
   | 'JOB_COMPLETED'
   | 'PHYSICAL_PRINT_VERIFICATION';
 
+export interface DetectedPrinter {
+  printerId: string;
+  brand: V1PrinterProfileBrand;
+  name: string;
+  queueName: string;
+  portName?: string;
+  driverName?: string;
+  vendorId?: string;
+  productId?: string;
+  serialNumber?: string;
+  isReady: boolean;
+  platform: 'win32' | 'darwin' | string;
+}
+
+export interface PrintResult {
+  success: boolean;
+  printerId: string;
+  platform: 'win32' | 'darwin' | string;
+  queueName?: string;
+  portName?: string;
+  bytesSent?: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export interface JoshTestPrintResult {
   success: boolean;
   stage: TestPrintStage;

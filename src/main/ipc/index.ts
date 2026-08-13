@@ -59,6 +59,33 @@ export function registerIpcHandlers(
     return await orchestrator.resetAndScanNewDevice();
   });
 
+  // Unified USB Transport IPC Channels
+  ipcMain.handle('printer:detect', async () => {
+    const { UsbTransportFactory } = await import('../services/transport/UsbPrinterTransport');
+    return await UsbTransportFactory.getTransport().discover();
+  });
+
+  ipcMain.handle('printer:status', async (_event, printerId: string) => {
+    const { UsbTransportFactory } = await import('../services/transport/UsbPrinterTransport');
+    return await UsbTransportFactory.getTransport().isReady(printerId);
+  });
+
+  ipcMain.handle('printer:testPrintDirect', async (_event, printerId: string) => {
+    const { UsbTransportFactory } = await import('../services/transport/UsbPrinterTransport');
+    return await UsbTransportFactory.getTransport().testPrint(printerId);
+  });
+
+  ipcMain.handle('printer:writeDirect', async (_event, printerId: string, payloadBase64: string) => {
+    const { UsbTransportFactory } = await import('../services/transport/UsbPrinterTransport');
+    const data = Buffer.from(payloadBase64, 'base64');
+    return await UsbTransportFactory.getTransport().write(printerId, data);
+  });
+
+  ipcMain.handle('printer:disconnect', async (_event, printerId: string) => {
+    const { UsbTransportFactory } = await import('../services/transport/UsbPrinterTransport');
+    return await UsbTransportFactory.getTransport().disconnect(printerId);
+  });
+
   // Printer Handlers
   ipcMain.handle('printer:scan', async () => {
     return await printerService.getAllPrinters();

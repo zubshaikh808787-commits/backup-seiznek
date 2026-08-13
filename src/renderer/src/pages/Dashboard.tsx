@@ -289,7 +289,7 @@ export const Dashboard: React.FC = () => {
 
           <button
             onClick={handleRunV1TestPrint}
-            disabled={!isUsbConnected || !v1State.queueName}
+            disabled={!isUsbConnected && displayList.length === 0 && !v1State.queueName}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-extrabold text-xs shadow-xs transition-all flex items-center gap-1.5"
           >
             <FileText className="w-3.5 h-3.5" />

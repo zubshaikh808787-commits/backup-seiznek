@@ -22,6 +22,8 @@ import { PrintValidator } from './PrintValidator';
 import { UsbDiscoveryService } from '../main/services/UsbDiscoveryService';
 import { PrinterIdentificationService } from '../main/services/PrinterIdentificationService';
 import { JoshPrintPipeline } from '../main/services/JoshPrintPipeline';
+import { UsbTransportFactory } from '../main/services/transport/UsbPrinterTransport';
+import { PrinterCommandGenerator } from '../main/services/commands/PrinterCommandGenerator';
 
 const execPromise = util.promisify(exec);
 
@@ -70,7 +72,7 @@ public class RawPrinterHelper {
         
         IntPtr hPrinter;
         DOCINFOA di = new DOCINFOA();
-        di.pDocName = "SEZNIK Test Print 4";
+        di.pDocName = "SEZNIK Automated Test Print";
         di.pDataType = "RAW";
 
         if (!OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero)) return false;
@@ -416,13 +418,20 @@ export class PrinterService implements IPrinterService {
       }
     }
 
-    // Step 5: Automatically print 35x35mm Barcode Test Label on JOSH Setup Completion
+    // Step 5: Automatically print Test Receipt / Label on Setup Completion
     if (detectedBrand === 'JOSH') {
       logger.info(`Step 5 (Auto Test Print): JOSH Setup completed successfully! Transmitting 35x35mm Barcode Test Label (12345678) to "${registeredPrinterName}"...`);
       try {
         await this.performRawTestPrint(registeredPrinterName, 'LABEL', 1);
       } catch (pErr: any) {
-        logger.warn(`Notice during auto test print: ${pErr.message}`);
+        logger.warn(`Notice during JOSH auto test print: ${pErr.message}`);
+      }
+    } else if (detectedBrand === 'VEER') {
+      logger.info(`Step 5 (Auto Test Print): VEER Setup completed successfully! Transmitting 58mm ESC/POS Test Receipt to "${registeredPrinterName}"...`);
+      try {
+        await this.performRawTestPrint(registeredPrinterName, 'RECEIPT', 1);
+      } catch (pErr: any) {
+        logger.warn(`Notice during VEER auto test print: ${pErr.message}`);
       }
     }
 
@@ -430,7 +439,7 @@ export class PrinterService implements IPrinterService {
       success: true,
       brand: detectedBrand,
       printerName: registeredPrinterName,
-      message: `Setup complete! Auto-detected ${detectedBrand} USB printer "${registeredPrinterName}", installed driver, set as System Default, and printed 35x35mm test label ✓`,
+      message: `Setup complete! Auto-detected ${detectedBrand} USB printer "${registeredPrinterName}", installed driver, set as System Default, and sent test print ✓`,
     };
   }
 
@@ -518,9 +527,13 @@ export class PrinterService implements IPrinterService {
   async performRawTestPrint(targetPrinterName: string, printType: 'RECEIPT' | 'LABEL', quantity = 1): Promise<JoshTestPrintResult> {
     try {
       const installedPrinters = await this.getOsPrinters();
+      
+      const targetLower = (targetPrinterName || '').toLowerCase();
+      const isTargetVeer = targetLower.includes('pos58') || targetLower.includes('pos-58') || targetLower.includes('veer') || targetLower.includes('receipt');
       const isLabelRequest = printType === 'LABEL';
 
-      if (isLabelRequest) {
+      // Only divert to JoshPrintPipeline if it's a TSPL label request AND target is NOT a VEER receipt printer
+      if (isLabelRequest && !isTargetVeer) {
         const joshPipeline = new JoshPrintPipeline();
         return await joshPipeline.executeJoshPipeline(targetPrinterName);
       }
@@ -530,7 +543,7 @@ export class PrinterService implements IPrinterService {
       if (installedPrinters.length > 0) {
         let found: OSPrinterInfo | undefined;
 
-        if (isLabelRequest) {
+        if (isLabelRequest && !isTargetVeer) {
           found = 
             installedPrinters.find(p => p.name.toLowerCase().includes('ld0801') || p.name.toLowerCase().includes('dp27') || p.name.toLowerCase().includes('josh') || p.name.toLowerCase().includes('detong')) ||
             installedPrinters.find(p => p.name.toLowerCase().includes('label')) ||
@@ -548,46 +561,31 @@ export class PrinterService implements IPrinterService {
       }
 
       if (!matchedName || matchedName.trim() === '') {
-        matchedName = isLabelRequest ? 'DP27 Label Printer' : 'POS58 Printer';
+        matchedName = isTargetVeer ? 'POS58 Printer' : (isLabelRequest ? 'DP27 Label Printer' : 'POS58 Printer');
       }
 
-      const isVeer = matchedName.toLowerCase().includes('pos58') || matchedName.toLowerCase().includes('pos-58') || matchedName.toLowerCase().includes('veer') || !isLabelRequest;
+      const isVeer = matchedName.toLowerCase().includes('pos58') || matchedName.toLowerCase().includes('pos-58') || matchedName.toLowerCase().includes('veer') || isTargetVeer;
       const brand = isVeer ? 'VEER' : 'JOSH';
       const role = isVeer ? 'RECEIPT' : 'LABEL';
       const protocol = isVeer ? 'ESC/POS 203 DPI' : 'TSPL 203 DPI';
-      const jobId = PrintValidator.createJobId(brand, printType);
+      const effectiveJobType = isVeer ? 'RECEIPT' : printType;
+      const jobId = PrintValidator.createJobId(brand, effectiveJobType);
 
-      logger.info(`[USB_PRINT] Executing ${printType} print job over USB`);
+      logger.info(`[USB_PRINT] Executing ${effectiveJobType} print job over USB for ${brand}`);
       logger.info(`[USB_PRINT] Job ID: ${jobId}`);
       logger.info(`[USB_PRINT] Quantity: ${quantity}`);
       logger.info(`[USB_PRINT] Target Spooler Queue: "${matchedName}"`);
 
-      const rawScriptPath = path.join(os.tmpdir(), 'seznik_winspool_raw.ps1');
-      fs.writeFileSync(rawScriptPath, RAW_PRINT_SCRIPT_CONTENT, 'utf-8');
-
-      const escposReceiptPayload = 
-`\x1B\x40\x1B\x61\x01SEZNIK POS STORE\r\nGSTIN: 27AAAAA0000A1Z5\r\n--------------------------------\r\n\x1B\x61\x00Inv: #INV-2026-9042     8/8/2026\r\nCust: Rahul Sharma  Ph: +91 98765 43210\r\n--------------------------------\r\nItem                 Qty     Amt\r\nWireless Keyboard      1  Rs.1,499\r\nOptical Mouse Pro      2  Rs.1,200\r\n--------------------------------\r\nSubtotal               Rs.2,699.00\r\nGST (18%)                Rs.485.82\r\n--------------------------------\r\n\x1B\x45\x01GRAND TOTAL            Rs.3,184.82\x1B\x45\x00\r\n--------------------------------\r\n\x1B\x61\x01Thank you for your purchase!\r\n\r\n|||| | |||| |||| ||||\r\nINV-2026-9042\r\n\r\n\r\n\r\n\x1D\x56\x00`;
-
-      const singleTsplPayload = 
-        "SIZE 50 mm, 50 mm\r\n" +
-        "GAP 3 mm, 0 mm\r\n" +
-        "REFERENCE 0,0\r\n" +
-        "SET TEAR ON\r\n" +
-        "DIRECTION 1\r\n" +
-        "CLS\r\n" +
-        "BARCODE 30,35,\"128\",110,1,0,2,2,\"12345678\"\r\n" +
-        `PRINT ${quantity},1\r\n`;
-
-      const finalPayload = printType === 'RECEIPT' ? escposReceiptPayload : singleTsplPayload;
+      const payload = PrinterCommandGenerator.generateTestPayload(brand, effectiveJobType);
 
       const validation = PrintValidator.validateJob({
         jobId,
         brand,
         printerType: role,
-        jobType: printType,
+        jobType: effectiveJobType,
         transport: 'USB',
         protocol,
-        payloadLength: finalPayload.length,
+        payloadLength: payload.length,
       });
 
       if (!validation.valid) {
@@ -601,55 +599,33 @@ export class PrinterService implements IPrinterService {
         };
       }
 
-      const tempFile = path.join(os.tmpdir(), `seznik_test_${Date.now()}.bin`);
-      fs.writeFileSync(tempFile, Buffer.from(finalPayload, 'latin1'));
+      logger.info(`[PrinterService] Transmitting ${payload.length} bytes to transport layer for target queue: "${matchedName}"...`);
+      const transport = UsbTransportFactory.getTransport();
+      const printRes = await transport.write(matchedName, payload);
 
-      if (os.platform() === 'win32') {
-        let rawSuccess = false;
-        try {
-          const psRawCmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${rawScriptPath}" -PrinterName "${matchedName}" -FilePath "${tempFile}"`;
-          await execPromise(psRawCmd);
-          rawSuccess = true;
-        } catch (e1: any) {
-          logger.warn(`winspool.drv RAW execution for "${matchedName}": ${e1.message}`);
-        }
-
-        // Direct Hardware USB Port Raw Stream Copy (USB001 / CP001)
-        try {
-          await execPromise(`cmd.exe /c copy /b "${tempFile}" USB001`);
-          logger.info(`[USB_PRINT] Direct copy /b to USB001 succeeded ✓`);
-          rawSuccess = true;
-        } catch (cErr: any) {
-          try {
-            await execPromise(`cmd.exe /c copy /b "${tempFile}" CP001`);
-          } catch (e2) {}
-        }
+      if (printRes.success) {
+        return {
+          success: true,
+          stage: 'PHYSICAL_PRINT_VERIFICATION',
+          code: 'PRINT_SUCCESS',
+          printerName: matchedName,
+          brand,
+          queueName: printRes.queueName || matchedName,
+          spoolerStatus: 'Job Sent to USB Spooler ✓',
+          printerStatus: 'PRINT_SUCCESS',
+          message: `Physical print job (${brand} ${printType}) delivered to "${printRes.queueName || matchedName}" on port ${printRes.portName || 'USB'} ✓`,
+        };
       } else {
-        await execPromise(`lpr -P "${matchedName}" "${tempFile}"`);
-      }
-
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-
-      if (installedPrinters.length === 0) {
         return {
           success: false,
-          stage: 'QUEUE_VERIFICATION',
-          code: 'NO_SPOOLER_QUEUE',
+          stage: 'PRINT_SUBMISSION',
+          code: printRes.errorCode || 'PRINT_FAILED',
           printerName: matchedName,
+          brand,
           queueName: matchedName,
-          message: `Windows Spooler queue "${matchedName}" not found. Please click "1-Click Auto Setup" to install printer driver.`,
+          message: printRes.errorMessage || 'Print job submission failed.',
         };
       }
-
-      logger.info(`[USB_PRINT] Job sent successfully to "${matchedName}"`);
-      return {
-        success: true,
-        stage: 'JOB_COMPLETED',
-        code: 'SUCCESS',
-        printerName: matchedName,
-        queueName: matchedName,
-        message: `Job sent to USB printer "${matchedName}". Check physical printout!`,
-      };
     } catch (err: any) {
       logger.error(`[USB_PRINT] Job failed: ${err.message}`);
       return {
@@ -658,7 +634,7 @@ export class PrinterService implements IPrinterService {
         code: 'PRINT_JOB_FAILED',
         printerName: targetPrinterName,
         queueName: targetPrinterName,
-        message: `Test print job submitted to spooler for "${targetPrinterName}".`,
+        message: `Test print job failed for "${targetPrinterName}": ${err.message}`,
       };
     }
   }

@@ -394,36 +394,77 @@ export class TestPrintService {
       let channelAError = '';
       let channelBError = '';
       if (os.platform() === 'win32') {
-        // Channel B (Primary): Windows Spooler WinSpool API (OpenPrinter → StartDoc → WritePrinter → EndDoc → ClosePrinter)
+        let resolvedActivePort = 'USB003';
+        try {
+          const isVeerQueue = printerName.toLowerCase().includes('pos58') || printerName.toLowerCase().includes('veer') || printerName.toLowerCase().includes('receipt');
+          if (isVeerQueue) {
+            const psGetPorts = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterPort -ErrorAction SilentlyContinue | Select-Object Name, Description | ConvertTo-Json"`;
+            const { stdout } = await execPromise(psGetPorts);
+            if (stdout && stdout.trim() !== '') {
+              const parsed = JSON.parse(stdout);
+              const portList: any[] = Array.isArray(parsed) ? parsed : [parsed];
+
+              let currentPort = '';
+              try {
+                const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue).PortName"`);
+                if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
+              } catch (e) {}
+
+              const specificPorts = portList.filter((p: any) => {
+                const desc = String(p.Description || '').toLowerCase();
+                const name = String(p.Name || '').toLowerCase();
+                return desc.includes('olivetti') || desc.includes('prt80') || desc.includes('pos58') || desc.includes('veer') || desc.includes('58') || name.includes('pos58');
+              });
+
+              if (specificPorts.length > 0) {
+                const matchCurrent = specificPorts.find((p: any) => String(p.Name || '').toLowerCase() === currentPort.toLowerCase());
+                if (matchCurrent) {
+                  resolvedActivePort = matchCurrent.Name;
+                } else {
+                  specificPorts.sort((a: any, b: any) => {
+                    const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+                    const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+                    return numA - numB;
+                  });
+                  resolvedActivePort = specificPorts[0].Name;
+                }
+              } else {
+                const genericUsbPorts = portList.filter((p: any) => {
+                  const desc = String(p.Description || '').toLowerCase();
+                  const name = String(p.Name || '').toLowerCase();
+                  return name.startsWith('usb') && !desc.includes('dp27') && !desc.includes('detong') && !desc.includes('josh') && desc !== 'virtual printer port for usb';
+                });
+                if (genericUsbPorts.length > 0) {
+                  resolvedActivePort = genericUsbPorts[0].Name;
+                }
+              }
+
+              const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${printerName}' -PortName '${resolvedActivePort}' -ErrorAction SilentlyContinue"`;
+              await execPromise(psPrep);
+              logger.info(`[TestPrintService] Pre-print maintenance: Cleared queue & set "${printerName}" port to "${resolvedActivePort}" ✓`);
+            }
+          }
+        } catch (ePrep) {}
+
+        // Send RAW payload directly to Windows Spooler API (winspool.drv)
         try {
           const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${rawScriptPath}" -PrinterName "${printerName}" -FilePath "${tempFile}"`;
           const { stdout, stderr } = await execPromise(psCmd);
           if (!stderr || !stderr.toLowerCase().includes('error')) {
-            channelBSuccess = true;
-            logger.info(`[TestPrintService] Channel B (WinSpool API) transmitted RAW payload to "${printerName}" ✓`);
+            channelASuccess = true;
+            logger.info(`[TestPrintService] WinSpool API transmitted RAW payload (${payload.length} bytes) to "${printerName}" on "${resolvedActivePort}" ✓`);
           }
         } catch (psErr: any) {
-          channelBError = psErr.stderr || psErr.message || 'Unknown WinSpool error';
-          logger.warn(`[TestPrintService] Channel B (WinSpool) FAILED for "${printerName}": ${channelBError}`);
+          channelAError = psErr.stderr || psErr.message || 'Unknown WinSpool error';
+          logger.warn(`[TestPrintService] WinSpool notice for "${printerName}": ${channelAError}`);
         }
 
-        // Channel A (Fallback): Direct Hardware USB Port Stream Copy ONLY if WinSpool API failed
-        if (!channelBSuccess) {
+        // Post-print Cleanup: Remove any stuck spooler error jobs created by vendor driver
+        setTimeout(async () => {
           try {
-            await execPromise(`cmd.exe /c copy /b "${tempFile}" USB001`);
-            channelASuccess = true;
-            logger.info(`[TestPrintService] Channel A (USB001 Direct Raw Copy) transmitted payload to physical USB port ✓`);
-          } catch (cErr: any) {
-            try {
-              await execPromise(`cmd.exe /c copy /b "${tempFile}" CP001`);
-              channelASuccess = true;
-              logger.info(`[TestPrintService] Channel A (CP001 Direct Raw Copy) transmitted payload ✓`);
-            } catch (e2: any) {
-              channelAError = e2.stderr || e2.message || 'USB port copy failed';
-              logger.warn(`[TestPrintService] Channel A (USB Direct Copy) FAILED: ${channelAError}`);
-            }
-          }
-        }
+            await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`);
+          } catch (e) {}
+        }, 500);
       } else {
         await execPromise(`lpr -P "${printerName}" "${tempFile}"`);
         channelASuccess = true;
@@ -433,21 +474,17 @@ export class TestPrintService {
       try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
 
       // Report result based on actual channel success
-      const anySuccess = channelASuccess || channelBSuccess;
-
-      if (anySuccess) {
-        const channels = [channelASuccess ? 'WinSpool' : null, channelBSuccess ? 'USB-Direct' : null].filter(Boolean).join(' + ');
-        logger.info(`[TestPrintService] ✓ Print job (${jobLabel}) delivered to "${printerName}" via [${channels}]`);
+      if (channelASuccess) {
+        logger.info(`[TestPrintService] ✓ Print job (${jobLabel}) delivered to "${printerName}" via WinSpool API`);
         return {
           success: true,
-          message: `Test print (${jobLabel}) sent to "${printerName}" via ${channels}. Check physical printout!`,
+          message: `Test print (${jobLabel}) sent to "${printerName}" via WinSpool API. Check physical printout!`,
         };
       } else {
-        const errorDetail = [channelAError, channelBError].filter(Boolean).join(' | ');
-        logger.error(`[TestPrintService] ✗ BOTH print channels FAILED for "${printerName}": ${errorDetail}`);
+        logger.error(`[TestPrintService] ✗ Print transmission FAILED for "${printerName}": ${channelAError}`);
         return {
           success: false,
-          message: `Print failed on "${printerName}": ${errorDetail}`,
+          message: `Print failed on "${printerName}": ${channelAError}`,
         };
       }
     } catch (err: any) {

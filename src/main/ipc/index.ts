@@ -11,6 +11,7 @@ import { ConfigurationService } from '../../services/ConfigurationService';
 import { LoggingService } from '../../services/LoggingService';
 import { PrinterSetupOrchestrator } from '../services/PrinterSetupOrchestrator';
 import { DtpWebService } from '../services/DtpWebService';
+import { BluetoothPrinterService } from '../services/BluetoothPrinterService';
 import logger from '../logger';
 
 export function registerIpcHandlers(
@@ -21,7 +22,8 @@ export function registerIpcHandlers(
   usbService: USBService,
   configService: ConfigurationService,
   loggingService: LoggingService,
-  orchestrator: PrinterSetupOrchestrator
+  orchestrator: PrinterSetupOrchestrator,
+  bluetoothService: BluetoothPrinterService
 ) {
   // Window Handlers
   ipcMain.on('window:minimize', () => mainWindow.minimize());
@@ -91,6 +93,44 @@ export function registerIpcHandlers(
   ipcMain.handle('v1:resetAndScan', async () => {
     logger.info('IPC invoked: v1:resetAndScan');
     return await orchestrator.resetAndScanNewDevice();
+  });
+
+  // Bluetooth (BLE/SPP) Printer Pairing Channels — optional step after USB setup completes
+  ipcMain.handle('bluetooth:getState', async () => {
+    return bluetoothService.getState();
+  });
+
+  ipcMain.handle('bluetooth:scan', async () => {
+    logger.info('IPC invoked: bluetooth:scan');
+    const res = await bluetoothService.scanPairedDevices();
+    await loggingService.logAction('BLUETOOTH_SCAN', res.stepMessage, res.step === 'ERROR' ? 'WARN' : 'INFO');
+    return res;
+  });
+
+  ipcMain.handle('bluetooth:connect', async (_event, deviceId: string) => {
+    logger.info(`IPC invoked: bluetooth:connect [${deviceId}]`);
+    const res = await bluetoothService.connectDevice(deviceId);
+    await loggingService.logAction('BLUETOOTH_CONNECT', res.stepMessage, res.step === 'ERROR' || res.step === 'TEST_PRINT_FAILED' ? 'WARN' : 'INFO');
+    return res;
+  });
+
+  ipcMain.handle('bluetooth:testPrint', async () => {
+    logger.info('IPC invoked: bluetooth:testPrint');
+    const res = await bluetoothService.triggerTestPrint();
+    await loggingService.logAction('BLUETOOTH_TEST_PRINT', res.stepMessage, res.testPrintSuccess ? 'INFO' : 'WARN');
+    return res;
+  });
+
+  ipcMain.handle('bluetooth:disconnect', async () => {
+    logger.info('IPC invoked: bluetooth:disconnect');
+    return bluetoothService.disconnect();
+  });
+
+  ipcMain.handle('bluetooth:forget', async (_event, deviceId: string) => {
+    logger.info(`IPC invoked: bluetooth:forget [${deviceId}]`);
+    const res = await bluetoothService.forgetDevice(deviceId);
+    await loggingService.logAction('BLUETOOTH_FORGET', `Forgot Bluetooth printer [${deviceId}]`, 'INFO');
+    return res;
   });
 
   // Unified USB Transport IPC Channels

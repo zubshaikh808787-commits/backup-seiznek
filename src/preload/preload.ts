@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState, VeerBleBridge, VeerBleStatus } from '../shared/types';
+import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState, VeerBleBridge, VeerBleStatus, BluetoothConnectionState } from '../shared/types';
 
 const seznikApi: SeznikApiBridge = {
   // Window Controls
@@ -30,6 +30,17 @@ const seznikApi: SeznikApiBridge = {
   getUnspecifiedDevices: () => ipcRenderer.invoke('printer:getUnspecified'),
   startUsbMonitoring: () => ipcRenderer.invoke('usb:startMonitoring'),
   stopUsbMonitoring: () => ipcRenderer.invoke('usb:stopMonitoring'),
+
+  // Bluetooth (BLE/SPP) Printer Pairing Bridge
+  getBluetoothState: () => ipcRenderer.invoke('bluetooth:getState'),
+  onBluetoothStateChanged: (callback: (state: BluetoothConnectionState) => void) => {
+    ipcRenderer.on('event:bluetoothStateChanged', (_event, state) => callback(state));
+  },
+  scanBluetoothDevices: () => ipcRenderer.invoke('bluetooth:scan'),
+  connectBluetoothDevice: (deviceId: string) => ipcRenderer.invoke('bluetooth:connect', deviceId),
+  triggerBluetoothTestPrint: () => ipcRenderer.invoke('bluetooth:testPrint'),
+  disconnectBluetoothDevice: () => ipcRenderer.invoke('bluetooth:disconnect'),
+  forgetBluetoothDevice: (deviceId: string) => ipcRenderer.invoke('bluetooth:forget', deviceId),
 
   // Official DothanTech DtpWeb Print Assistant API Bridge
   checkDtpWebPlugin: () => ipcRenderer.invoke('dtpweb:checkPlugin'),

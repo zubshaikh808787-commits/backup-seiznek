@@ -1,12 +1,13 @@
 import { create } from 'zustand';
-import { 
-  PrinterDevice, 
-  OSPrinterInfo, 
-  UnspecifiedDevice, 
+import {
+  PrinterDevice,
+  OSPrinterInfo,
+  UnspecifiedDevice,
   ConnectionType,
   SavedPrinter,
   V1OrchestratorState,
   JoshTestPrintResult,
+  BluetoothConnectionState,
 } from '@shared/types';
 
 interface PrinterStoreState {
@@ -50,6 +51,15 @@ interface PrinterStoreState {
   resetAndScanV1: () => Promise<void>;
   triggerV1TestPrint: () => Promise<JoshTestPrintResult>;
 
+  // Bluetooth (BLE/SPP) Printer Pairing — optional, after USB setup completes
+  bluetoothState: BluetoothConnectionState;
+  initBluetooth: () => Promise<void>;
+  scanBluetoothDevices: () => Promise<void>;
+  connectBluetoothDevice: (deviceId: string) => Promise<void>;
+  triggerBluetoothTestPrint: () => Promise<void>;
+  disconnectBluetoothDevice: () => Promise<void>;
+  forgetBluetoothDevice: (deviceId: string) => Promise<void>;
+
   fetchOsPrinters: () => Promise<void>;
   fetchUnspecifiedDevices: () => Promise<void>;
   installJoshDriver: () => Promise<{ success: boolean; log: string }>;
@@ -78,6 +88,20 @@ export const usePrinterStore = create<PrinterStoreState>((set, get) => ({
     testPrintSuccess: false,
   },
   lastDiagnosticResult: null,
+
+  bluetoothState: {
+    step: 'IDLE',
+    stepMessage: 'Bluetooth printer not connected yet.',
+    devices: [],
+    isScanning: false,
+    connectedDeviceId: null,
+    connectedDeviceName: null,
+    connectedComPort: null,
+    connectedQueueName: null,
+    connectedDriverName: null,
+    testPrintSuccess: false,
+    lastTestPrintMessage: null,
+  },
 
   activePrinter: null,
   printers: [],
@@ -132,6 +156,62 @@ export const usePrinterStore = create<PrinterStoreState>((set, get) => ({
     };
     set({ lastDiagnosticResult: fallback });
     return fallback;
+  },
+
+  initBluetooth: async () => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.getBluetoothState();
+      set({ bluetoothState: state });
+
+      window.seznikApi.onBluetoothStateChanged((newState) => {
+        const wasConnected = !!get().bluetoothState.connectedComPort;
+        set({ bluetoothState: newState });
+        if (newState.step === 'TEST_PRINT_SUCCESS') {
+          get().fetchSavedPrinters();
+        }
+        // Surface an unexpected hardware drop even if the Bluetooth modal isn't open.
+        if (wasConnected && !newState.connectedComPort && newState.step === 'ERROR') {
+          set({ toastMessage: newState.stepMessage });
+          setTimeout(() => set({ toastMessage: null }), 6000);
+        }
+      });
+    }
+  },
+
+  scanBluetoothDevices: async () => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.scanBluetoothDevices();
+      set({ bluetoothState: state });
+    }
+  },
+
+  connectBluetoothDevice: async (deviceId: string) => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.connectBluetoothDevice(deviceId);
+      set({ bluetoothState: state });
+    }
+  },
+
+  triggerBluetoothTestPrint: async () => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.triggerBluetoothTestPrint();
+      set({ bluetoothState: state });
+    }
+  },
+
+  disconnectBluetoothDevice: async () => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.disconnectBluetoothDevice();
+      set({ bluetoothState: state });
+    }
+  },
+
+  forgetBluetoothDevice: async (deviceId: string) => {
+    if (window.seznikApi) {
+      const state = await window.seznikApi.forgetBluetoothDevice(deviceId);
+      set({ bluetoothState: state });
+      await get().fetchSavedPrinters();
+    }
   },
 
   fetchSavedPrinters: async () => {

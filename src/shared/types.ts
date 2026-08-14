@@ -1,8 +1,8 @@
 // Shared Application & Hardware Types for SEZNIK Printer Manager (Final V1 Architecture)
 
-export type ConnectionType = 'USB';
+export type ConnectionType = 'USB' | 'BLUETOOTH';
 
-export type PrinterType = 
+export type PrinterType =
   | 'RECEIPT'
   | 'LABEL'
   | 'RECEIPT_AND_LABEL'
@@ -37,10 +37,11 @@ export interface SavedPrinter {
   name: string;
   driverName: string;
   portName: string;
-  connectionType: 'USB';
+  connectionType: ConnectionType;
   isDefault: boolean;
   printerType: PrinterType;
   savedAt: string;
+  macAddress?: string | null;
 }
 
 export interface RemoveSavedPrinterResult {
@@ -253,6 +254,55 @@ export interface JoshTestPrintResult {
   suggestedAction?: string;
 }
 
+// ============================================================
+// Bluetooth (BLE / SPP) Printer Connection — Post-USB-Setup Pairing
+// ============================================================
+// Flow: user completes USB driver setup first (V1 pipeline above). Once
+// SETUP_COMPLETE, they may optionally pair the same/another printer over
+// Bluetooth. The printer pairs in Windows Bluetooth settings and exposes a
+// "Standard Serial over Bluetooth link (COMx)" port (SPP profile) — we
+// discover that paired device + its COM port, connect to it, and fire one
+// automatic test receipt to confirm the link works.
+
+export interface BluetoothPairedDevice {
+  id: string; // stable id: mac address if known, else derived from instanceId
+  name: string;
+  address: string | null; // 12-hex Bluetooth MAC, uppercase, no separators
+  comPort: string | null; // e.g. "COM5" — null if Windows hasn't bound an SPP port yet
+  isLikelyPrinter: boolean; // heuristic keyword match (pos/receipt/veer/printer/thermal/bt)
+}
+
+export type BluetoothConnectionStep =
+  | 'IDLE'
+  | 'SCANNING'
+  | 'DEVICES_FOUND'
+  | 'NO_DEVICES_FOUND'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'TEST_PRINTING'
+  | 'TEST_PRINT_SUCCESS'
+  | 'TEST_PRINT_FAILED'
+  | 'DISCONNECTED'
+  | 'ERROR';
+
+export interface BluetoothConnectionState {
+  step: BluetoothConnectionStep;
+  stepMessage: string;
+  devices: BluetoothPairedDevice[];
+  isScanning: boolean;
+  connectedDeviceId: string | null;
+  connectedDeviceName: string | null;
+  connectedComPort: string | null;
+  // Name of the real Windows printer queue registered for this device — this
+  // is the name that shows up in every app's Print dialog (Ctrl+P), not just
+  // inside SEZNIK.
+  connectedQueueName: string | null;
+  connectedDriverName: string | null;
+  testPrintSuccess: boolean;
+  lastTestPrintMessage: string | null;
+  errorDetails?: string;
+}
+
 // IPC Channel API Interface exposed via preload contextBridge
 export interface SeznikApiBridge {
   // System & Window Controls
@@ -286,6 +336,15 @@ export interface SeznikApiBridge {
   getUnspecifiedDevices: () => Promise<UnspecifiedDevice[]>;
   startUsbMonitoring: () => Promise<void>;
   stopUsbMonitoring: () => Promise<void>;
+
+  // Bluetooth (BLE/SPP) Printer Pairing — optional, after USB setup completes
+  getBluetoothState: () => Promise<BluetoothConnectionState>;
+  onBluetoothStateChanged: (callback: (state: BluetoothConnectionState) => void) => void;
+  scanBluetoothDevices: () => Promise<BluetoothConnectionState>;
+  connectBluetoothDevice: (deviceId: string) => Promise<BluetoothConnectionState>;
+  triggerBluetoothTestPrint: () => Promise<BluetoothConnectionState>;
+  disconnectBluetoothDevice: () => Promise<BluetoothConnectionState>;
+  forgetBluetoothDevice: (deviceId: string) => Promise<BluetoothConnectionState>;
 
   // Driver & Spooler Operations
   checkDriverInstalled: () => Promise<{ installed: boolean; driverName: string; queueName: string }>;

@@ -126,43 +126,65 @@ export const Dashboard: React.FC = () => {
   const isUsbConnected = v1State.usbConnected;
   const isBtConnected = !!bluetoothState?.connectedDeviceId;
 
-  // Build clean display list from savedPrinters / active OS printers
-  const displayList = savedPrinters.length > 0
-    ? savedPrinters.map(sp => {
-        const isThisConnected = isUsbConnected && (
-          v1State.queueName?.toLowerCase() === sp.name.toLowerCase() ||
-          v1State.detectedHardwareName?.toLowerCase() === sp.name.toLowerCase() ||
-          osPrinters.some(op => op.name.toLowerCase() === sp.name.toLowerCase())
-        );
-        return {
-          ...sp,
-          isConnected: isThisConnected || (sp.connectionType === 'BLUETOOTH' && isBtConnected),
-        };
-      })
-    : (osPrinters.length > 0
-        ? osPrinters.map(p => ({
-            id: `os-${p.name}`,
-            name: p.name,
-            driverName: p.driverName,
-            portName: p.portName || 'USB001',
-            connectionType: (p.portName?.toLowerCase().includes('com') ? 'BLUETOOTH' : 'USB') as any,
-            isDefault: p.isDefault,
-            printerType: (p.name.toLowerCase().includes('dp27') || p.name.toLowerCase().includes('josh') ? 'LABEL' : 'RECEIPT') as any,
-            savedAt: new Date().toLocaleDateString(),
-            isConnected: isUsbConnected,
-          }))
-        : (v1State.queueName ? [{
-            id: `v1-${v1State.queueName}`,
-            name: v1State.queueName,
-            driverName: v1State.queueName,
-            portName: 'USB001',
-            connectionType: 'USB' as any,
-            isDefault: v1State.isDefault,
-            printerType: (v1State.brand === 'JOSH' ? 'LABEL' : 'RECEIPT') as any,
-            savedAt: new Date().toLocaleDateString(),
-            isConnected: isUsbConnected,
-          }] : [])
-      );
+  // Combine savedPrinters and all OS printers seamlessly
+  const combinedList = new Map<string, any>();
+
+  // 1. Add all OS-installed printers from Windows
+  osPrinters.forEach((p) => {
+    const isBt = p.portName?.toLowerCase().includes('com') || p.name.toLowerCase().includes('bluetooth') || p.name.toLowerCase().includes('mpt');
+    const isThisConnected = isBt 
+      ? true
+      : (isUsbConnected && (v1State.queueName?.toLowerCase() === p.name.toLowerCase() || v1State.detectedHardwareName?.toLowerCase() === p.name.toLowerCase()));
+
+    combinedList.set(p.name.toLowerCase(), {
+      id: `os-${p.name}`,
+      name: p.name,
+      driverName: p.driverName,
+      portName: p.portName || (isBt ? 'COM4' : 'USB001'),
+      connectionType: isBt ? 'BLUETOOTH' : 'USB',
+      isDefault: p.isDefault,
+      printerType: (p.name.toLowerCase().includes('dp27') || p.name.toLowerCase().includes('josh') || p.name.toLowerCase().includes('label')) ? 'LABEL' : 'RECEIPT',
+      savedAt: new Date().toLocaleDateString(),
+      isConnected: isThisConnected,
+    });
+  });
+
+  // 2. Overlay saved printer metadata
+  savedPrinters.forEach((sp) => {
+    const isBt = sp.connectionType === 'BLUETOOTH' || sp.name.toLowerCase().includes('bluetooth') || sp.name.toLowerCase().includes('mpt');
+    const isThisConnected = isBt
+      ? true
+      : (isUsbConnected && (v1State.queueName?.toLowerCase() === sp.name.toLowerCase() || v1State.detectedHardwareName?.toLowerCase() === sp.name.toLowerCase()));
+
+    const existing = combinedList.get(sp.name.toLowerCase());
+    combinedList.set(sp.name.toLowerCase(), {
+      ...sp,
+      ...(existing || {}),
+      id: sp.id,
+      name: sp.name,
+      portName: sp.portName || existing?.portName || (isBt ? 'COM4' : 'USB001'),
+      connectionType: isBt ? 'BLUETOOTH' : 'USB',
+      isDefault: sp.isDefault || existing?.isDefault || false,
+      isConnected: isThisConnected,
+    });
+  });
+
+  // Fallback to v1State if empty
+  if (combinedList.size === 0 && v1State.queueName) {
+    combinedList.set(v1State.queueName.toLowerCase(), {
+      id: `v1-${v1State.queueName}`,
+      name: v1State.queueName,
+      driverName: v1State.queueName,
+      portName: 'USB001',
+      connectionType: 'USB',
+      isDefault: v1State.isDefault,
+      printerType: (v1State.brand === 'JOSH' ? 'LABEL' : 'RECEIPT'),
+      savedAt: new Date().toLocaleDateString(),
+      isConnected: isUsbConnected,
+    });
+  }
+
+  const displayList = Array.from(combinedList.values());
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto select-none">

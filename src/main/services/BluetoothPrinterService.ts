@@ -211,10 +211,30 @@ export class BluetoothPrinterService {
   }
 
   async triggerTestPrint(): Promise<BluetoothConnectionState> {
-    const queueName = this.state.connectedQueueName;
-    const deviceName = this.state.connectedDeviceName || 'Bluetooth Printer';
+    let queueName = this.state.connectedQueueName;
+    let comPort = this.state.connectedComPort;
+    let deviceName = this.state.connectedDeviceName || 'Bluetooth Printer';
 
-    if (!queueName) {
+    if (!queueName || !comPort) {
+      try {
+        const saved = await this.persistence.getSavedPrinters();
+        const btPrinter = saved.find(p => p.connectionType === 'BLUETOOTH');
+        if (btPrinter) {
+          queueName = btPrinter.name;
+          comPort = btPrinter.portName;
+          deviceName = btPrinter.name.replace(/\s*\(Bluetooth\)\s*$/i, '');
+          this.updateState({
+            connectedQueueName: queueName,
+            connectedComPort: comPort,
+            connectedDeviceName: deviceName,
+          });
+        }
+      } catch (err: any) {
+        logger.warn(`[BluetoothPrinterService] Error reading saved Bluetooth printers: ${err.message}`);
+      }
+    }
+
+    if (!queueName && !comPort) {
       return this.updateState({
         step: 'ERROR',
         stepMessage: 'No connected Bluetooth printer to test. Connect a device first.',
@@ -222,17 +242,17 @@ export class BluetoothPrinterService {
       });
     }
 
-    this.updateState({ step: 'TEST_PRINTING', stepMessage: `Sending test receipt to "${queueName}"...` });
+    this.updateState({ step: 'TEST_PRINTING', stepMessage: `Sending test receipt to "${queueName || comPort}"...` });
 
     const payload = buildBluetoothTestReceipt(deviceName);
-    const result = await this.transport.write(queueName, payload);
+    const result = await this.transport.write(queueName || deviceName, payload, comPort);
 
     if (result.success) {
       return this.updateState({
         step: 'TEST_PRINT_SUCCESS',
-        stepMessage: `Test receipt sent to "${queueName}" ✓ Check the physical printout.`,
+        stepMessage: `Test receipt sent to "${queueName || deviceName}" ✓ Check the physical printout.`,
         testPrintSuccess: true,
-        lastTestPrintMessage: `Test receipt (${payload.length} bytes) delivered to "${queueName}" via the Windows print queue ✓`,
+        lastTestPrintMessage: `Test receipt (${payload.length} bytes) delivered to "${queueName || comPort}" directly ✓`,
       });
     }
 

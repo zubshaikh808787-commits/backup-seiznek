@@ -3,7 +3,7 @@ import util from 'util';
 import os from 'os';
 import logger from '../../logger';
 import { PrintResult } from '../../../shared/types';
-import { sendRawBytesToPrinterQueue } from '../util/WinSpoolRawPrint';
+import { sendRawBytesToPrinterQueue, sendRawBytesToSerialPort } from '../util/WinSpoolRawPrint';
 
 const execPromise = util.promisify(exec);
 
@@ -117,9 +117,21 @@ export class BluetoothPrinterTransport {
     }
   }
 
-  /** Sends raw ESC/POS bytes through the registered Windows queue — same RAW technique as USB printing. */
-  async write(queueName: string, data: Buffer): Promise<PrintResult> {
-    const res = await sendRawBytesToPrinterQueue(queueName, data, 'SEZNIK Bluetooth Print Job');
+  /** Sends raw ESC/POS bytes directly over the Bluetooth COM port or via the Windows queue. */
+  async write(queueName: string, data: Buffer, comPort?: string | null): Promise<PrintResult> {
+    let res: { success: boolean; message: string };
+
+    if (comPort) {
+      // Direct Win32 serial communication over Bluetooth RFCOMM bypasses Windows spooler timeout
+      res = await sendRawBytesToSerialPort(comPort, data, 'SEZNIK Bluetooth Print Job');
+      if (!res.success) {
+        logger.warn(`[BluetoothPrinterTransport] Direct serial port write to ${comPort} failed, trying Windows queue "${queueName}"...`);
+        res = await sendRawBytesToPrinterQueue(queueName, data, 'SEZNIK Bluetooth Print Job');
+      }
+    } else {
+      res = await sendRawBytesToPrinterQueue(queueName, data, 'SEZNIK Bluetooth Print Job');
+    }
+
     return {
       success: res.success,
       printerId: queueName,

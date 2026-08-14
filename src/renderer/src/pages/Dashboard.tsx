@@ -58,6 +58,7 @@ export const Dashboard: React.FC = () => {
     bluetoothState,
     initBluetooth,
     disconnectBluetoothDevice,
+    triggerBluetoothTestPrint,
   } = usePrinterStore();
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -79,11 +80,19 @@ export const Dashboard: React.FC = () => {
     fetchSavedPrinters();
   }, []);
 
-  const handleRunV1TestPrint = async () => {
-    setTestPrintStatus(t('testPrintStatus', 'Printing test page...'));
-    const res = await triggerV1TestPrint();
-    setTestPrintStatus(res.message || 'Test print submitted');
-    setTimeout(() => setTestPrintStatus(null), 4000);
+  const handleRunTestPrint = async (printer?: any) => {
+    const isBt = printer ? (printer.connectionType === 'BLUETOOTH' || (printer.name && printer.name.includes('(Bluetooth)'))) : false;
+    if (isBt) {
+      setTestPrintStatus('Sending test print to Bluetooth printer...');
+      await triggerBluetoothTestPrint();
+      setTestPrintStatus('Bluetooth test receipt sent ✓ Check physical printout.');
+      setTimeout(() => setTestPrintStatus(null), 4000);
+    } else {
+      setTestPrintStatus(t('testPrintStatus', 'Printing test page...'));
+      const res = await triggerV1TestPrint();
+      setTestPrintStatus(res.message || 'Test print submitted');
+      setTimeout(() => setTestPrintStatus(null), 4000);
+    }
   };
 
   const handleConfirmRemove = async () => {
@@ -289,7 +298,7 @@ export const Dashboard: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleRunV1TestPrint();
+                        handleRunTestPrint(printer);
                       }}
                       className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5"
                     >
@@ -410,7 +419,7 @@ export const Dashboard: React.FC = () => {
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end space-x-2">
                           <button
-                            onClick={() => handleRunV1TestPrint()}
+                            onClick={() => handleRunTestPrint(printer)}
                             className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 font-semibold text-xs transition-all"
                           >
                             {t('testPrint', 'Test Print')}

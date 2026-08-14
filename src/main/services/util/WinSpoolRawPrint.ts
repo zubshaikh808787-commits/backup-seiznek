@@ -9,10 +9,7 @@ const execPromise = util.promisify(exec);
 
 // Sends raw bytes to an installed Windows printer QUEUE (by name) via the
 // winspool.drv RAW datatype — the same technique already used for USB
-// printing (see WindowsUsbTransport / TestPrintService). Going through the
-// named queue (instead of opening the underlying port ourselves) means
-// Windows' spooler owns the port lifecycle, so the same queue is usable by
-// any other app's Print dialog (Ctrl+P) at the same time, with no conflict.
+// printing (see WindowsUsbTransport / TestPrintService).
 const RAW_PRINT_SCRIPT_CONTENT = `param(
     [string]$PrinterName,
     [string]$FilePath
@@ -94,6 +91,92 @@ if (-not $res) {
 }
 `;
 
+// Direct Win32 Serial Port streaming for Bluetooth SPP / RFCOMM ports (e.g. COM4).
+// Bypasses the Windows Spooler service timeout to stream ESC/POS bytes directly.
+const DIRECT_SERIAL_SCRIPT_CONTENT = `param(
+    [string]$PortName,
+    [string]$FilePath
+)
+
+$code = @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public class DirectSerialPrinterHelper {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct COMMTIMEOUTS {
+        public uint ReadIntervalTimeout;
+        public uint ReadTotalTimeoutMultiplier;
+        public uint ReadTotalTimeoutConstant;
+        public uint WriteTotalTimeoutMultiplier;
+        public uint WriteTotalTimeoutConstant;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern SafeFileHandle CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetCommTimeouts(SafeFileHandle hFile, ref COMMTIMEOUTS lpCommTimeouts);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool WriteFile(
+        SafeFileHandle hFile,
+        byte[] lpBuffer,
+        uint nNumberOfBytesToWrite,
+        out uint lpNumberOfBytesWritten,
+        IntPtr lpOverlapped);
+
+    public static bool SendFileToPort(string portName, string filePath) {
+        if (!File.Exists(filePath)) return false;
+        byte[] bytes = File.ReadAllBytes(filePath);
+
+        string cleanPort = portName.Replace(":", "").Trim();
+        string devicePath = @"\\\\.\\" + cleanPort;
+
+        SafeFileHandle handle = CreateFile(devicePath, 0xC0000000, 0, IntPtr.Zero, 3, 0, IntPtr.Zero);
+        if (handle.IsInvalid) {
+            return false;
+        }
+
+        COMMTIMEOUTS timeouts = new COMMTIMEOUTS();
+        timeouts.ReadIntervalTimeout = 50;
+        timeouts.ReadTotalTimeoutMultiplier = 10;
+        timeouts.ReadTotalTimeoutConstant = 1000;
+        timeouts.WriteTotalTimeoutMultiplier = 10;
+        timeouts.WriteTotalTimeoutConstant = 4000;
+        SetCommTimeouts(handle, ref timeouts);
+
+        uint written = 0;
+        bool result = WriteFile(handle, bytes, (uint)bytes.Length, out written, IntPtr.Zero);
+        handle.Close();
+
+        return result && (written > 0 || bytes.Length == 0);
+    }
+}
+"@
+
+try {
+    if (-not ("DirectSerialPrinterHelper" -as [type])) {
+        Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+    }
+} catch {}
+
+$res = [DirectSerialPrinterHelper]::SendFileToPort($PortName, $FilePath)
+if (-not $res) {
+    Write-Warning "Direct serial write returned false for $PortName."
+    exit 1
+}
+`;
+
 export async function sendRawBytesToPrinterQueue(
   queueName: string,
   data: Buffer,
@@ -118,6 +201,37 @@ export async function sendRawBytesToPrinterQueue(
   } catch (err: any) {
     const detail: string = err.stderr || err.message || 'Unknown WinSpool error';
     logger.error(`[WinSpoolRawPrint ERROR] Failed writing to "${queueName}": ${detail}`);
+    return { success: false, message: detail };
+  } finally {
+    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+  }
+}
+
+export async function sendRawBytesToSerialPort(
+  portName: string,
+  data: Buffer,
+  jobLabel = 'SEZNIK Direct Serial Print Job'
+): Promise<{ success: boolean; message: string }> {
+  if (os.platform() !== 'win32') {
+    return { success: false, message: 'Serial port writes are only supported on Windows.' };
+  }
+
+  const scriptPath = path.join(os.tmpdir(), 'seznik_serial_direct_shared.ps1');
+  const tempFile = path.join(os.tmpdir(), `seznik_serial_payload_${Date.now()}.bin`);
+
+  try {
+    fs.writeFileSync(scriptPath, DIRECT_SERIAL_SCRIPT_CONTENT, 'utf-8');
+    fs.writeFileSync(tempFile, data);
+
+    const cleanPort = portName.replace(/:/g, '').trim();
+    const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -PortName "${cleanPort}" -FilePath "${tempFile}"`;
+    await execPromise(psCmd, { timeout: 15000 });
+
+    logger.info(`[DirectSerialPrint] Delivered ${data.length} bytes to serial port "${cleanPort}" directly ✓`);
+    return { success: true, message: `${jobLabel} (${data.length} bytes) delivered to ${cleanPort} directly.` };
+  } catch (err: any) {
+    const detail: string = err.stderr || err.message || 'Unknown Serial error';
+    logger.error(`[DirectSerialPrint ERROR] Failed writing to "${portName}": ${detail}`);
     return { success: false, message: detail };
   } finally {
     try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}

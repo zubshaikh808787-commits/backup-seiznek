@@ -105,7 +105,7 @@ export interface SystemLogEntry {
 
 export interface SystemSettings {
   theme: 'dark' | 'light' | 'system';
-  language: 'en' | 'es' | 'fr' | 'de';
+  language: 'en' | 'hi';
   autoUpdate: boolean;
   logLevel: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
   downloadPath: string;

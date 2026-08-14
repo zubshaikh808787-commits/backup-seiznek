@@ -1,5 +1,5 @@
 import React from 'react';
-import { Usb, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Usb, RefreshCw, CheckCircle2, Printer } from 'lucide-react';
 import { usePrinterStore } from '../store/usePrinterStore';
 
 export const PrinterDetection: React.FC = () => {
@@ -10,77 +10,80 @@ export const PrinterDetection: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto select-none">
-      <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+    <div className="space-y-6 max-w-5xl mx-auto select-none">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-200/60">
         <div>
-          <h1 className="text-sm font-black text-slate-900 uppercase tracking-wider">USB Hardware Detection & Spooler Monitor</h1>
-          <p className="text-xs text-slate-500 font-medium">Real-time printer queue enumeration across USB ports</p>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">USB Connected Printers</h1>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">Real-time status of thermal printers connected via USB</p>
         </div>
         <button
           onClick={handleScan}
           disabled={isScanning}
-          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-          {isScanning ? 'Scanning USB Ports...' : 'Scan Ports'}
+          {isScanning ? 'Scanning Ports...' : 'Scan Ports'}
         </button>
       </div>
 
-      {/* Detection Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-1.5">
-          <div className="flex items-center justify-between text-xs font-extrabold text-blue-700">
-            <span className="flex items-center gap-1.5"><Usb className="w-4 h-4 text-blue-600" /> USB PnP Monitor</span>
-            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] border border-emerald-200">Active</span>
+      {/* Detection Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="synapse-card rounded-2xl p-4 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+            <span className="flex items-center gap-2"><Usb className="w-4 h-4 text-blue-600" /> USB Hardware Link</span>
+            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-emerald-200">Active</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-medium">Monitors hardware USB insertion and PnP class entities.</p>
+          <p className="text-xs text-slate-400 font-medium">Auto-detects USB printer connection and port binding.</p>
         </div>
 
-        <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-1.5">
-          <div className="flex items-center justify-between text-xs font-extrabold text-emerald-700">
-            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Spooler Subsystem</span>
-            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] border border-emerald-200">Ready</span>
+        <div className="synapse-card rounded-2xl p-4 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+            <span className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Print Spooler</span>
+            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-emerald-200">Ready</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-medium">Communicates with OS Spooler API (`Win32_Printer` / `lpstat`).</p>
+          <p className="text-xs text-slate-400 font-medium">Windows printer queue subsystem is online and ready.</p>
         </div>
       </div>
 
       {/* Detected Device Table */}
-      <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-3">
-        <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">Enumerated USB Devices</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-extrabold border-b border-slate-200">
-              <tr>
-                <th className="p-2.5">Interface</th>
-                <th className="p-2.5">Printer Queue Name</th>
-                <th className="p-2.5">Driver Name</th>
-                <th className="p-2.5">Port</th>
-                <th className="p-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {osPrinters.map((p, idx) => (
-                <tr key={idx} className="hover:bg-slate-50">
-                  <td className="p-2.5 font-bold text-blue-700 flex items-center gap-1"><Usb className="w-3.5 h-3.5" /> USB</td>
-                  <td className="p-2.5 font-extrabold text-slate-900">{p.name}</td>
-                  <td className="p-2.5 text-slate-600 font-medium">{p.driverName}</td>
-                  <td className="p-2.5 font-mono text-slate-700">{p.portName}</td>
-                  <td className="p-2.5 text-emerald-700 font-bold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {p.status}</td>
-                </tr>
-              ))}
-              {osPrinters.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-6 text-center text-slate-500 font-medium">
-                    No active USB printer queue detected. Connect a physical USB printer to your PC.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      <div className="synapse-card rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-slate-150 bg-slate-50/50">
+          <h2 className="text-xs font-bold text-slate-700">Detected USB Printer Queues</h2>
         </div>
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-slate-150 text-slate-400 font-semibold bg-slate-50/30">
+              <th className="py-3 px-4">Interface</th>
+              <th className="py-3 px-4">Printer Name</th>
+              <th className="py-3 px-4">Driver</th>
+              <th className="py-3 px-4">Port</th>
+              <th className="py-3 px-4">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+            {osPrinters.map((p, idx) => (
+              <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                <td className="py-3.5 px-4 font-semibold text-blue-600 flex items-center gap-1.5">
+                  <Usb className="w-3.5 h-3.5" /> USB
+                </td>
+                <td className="py-3.5 px-4 font-semibold text-slate-900">{p.name}</td>
+                <td className="py-3.5 px-4 text-slate-500">{p.driverName}</td>
+                <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">{p.portName}</td>
+                <td className="py-3.5 px-4 text-emerald-600 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {p.status || 'Ready'}
+                </td>
+              </tr>
+            ))}
+            {osPrinters.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-slate-400">
+                  No active USB printers detected. Connect a printer via USB to begin.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 };
-

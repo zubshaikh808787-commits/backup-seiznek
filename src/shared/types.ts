@@ -314,9 +314,85 @@ export interface SeznikApiBridge {
   onLogEntry: (callback: (log: SystemLogEntry) => void) => void;
 }
 
+export type VeerBleConnectionState =
+  | 'DISCONNECTED'
+  | 'SCANNING'
+  | 'VEER_FOUND'
+  | 'IDENTITY_VERIFIED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'DISCOVERING_SERVICES'
+  | 'SERVICE_FOUND'
+  | 'CHARACTERISTIC_FOUND'
+  | 'READY'
+  | 'PRINTING'
+  | 'PRINT_SUCCESS'
+  | 'ERROR';
+
+export type VeerBleErrorCode =
+  | 'BLE_DISABLED'
+  | 'BLE_PERMISSION_DENIED'
+  | 'VEER_NOT_FOUND'
+  | 'VEER_IDENTITY_MISMATCH'
+  | 'VEER_IDENTITY_AMBIGUOUS'
+  | 'BLE_CONNECTION_FAILED'
+  | 'BLE_DISCONNECTED'
+  | 'BLE_SERVICE_NOT_FOUND'
+  | 'BLE_CHARACTERISTIC_NOT_FOUND'
+  | 'BLE_CHARACTERISTIC_NOT_WRITABLE'
+  | 'BLE_WRITE_FAILED'
+  | 'BLE_PACKET_TOO_LARGE'
+  | 'BLE_CHUNK_FAILED'
+  | 'BLE_TIMEOUT'
+  | 'TEST_PRINT_FAILED'
+  | 'PRINT_FAILED';
+
+export interface VeerBleDevice {
+  id: string;
+  name: string;
+  address?: string;
+  rssi?: number;
+  serviceUuids?: string[];
+  manufacturerData?: string;
+  isVeer: boolean;
+}
+
+export interface VeerBleStatus {
+  state: VeerBleConnectionState;
+  deviceId: string | null;
+  deviceName: string | null;
+  serviceUuid: string | null;
+  characteristicUuid: string | null;
+  mtu: number;
+  errorMessage: string | null;
+  errorCode: VeerBleErrorCode | null;
+  lastPrintSuccess: boolean;
+}
+
+export interface VeerBlePrintResult {
+  success: boolean;
+  state: VeerBleConnectionState;
+  errorCode?: VeerBleErrorCode;
+  message: string;
+  bytesSent?: number;
+  chunksSent?: number;
+  details?: string;
+}
+
+export interface VeerBleBridge {
+  scan: () => Promise<{ success: boolean; devices: VeerBleDevice[]; message: string }>;
+  connect: (deviceId: string) => Promise<{ success: boolean; status: VeerBleStatus; message: string }>;
+  disconnect: () => Promise<{ success: boolean; message: string }>;
+  status: () => Promise<VeerBleStatus>;
+  testPrint: () => Promise<VeerBlePrintResult>;
+  print: (receiptDataHexOrAscii?: string) => Promise<VeerBlePrintResult>;
+  onBleStatusChanged: (callback: (status: VeerBleStatus) => void) => void;
+}
+
 declare global {
   interface Window {
     seznikApi?: SeznikApiBridge;
+    veerBle?: VeerBleBridge;
   }
 }
 

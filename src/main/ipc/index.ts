@@ -31,6 +31,40 @@ export function registerIpcHandlers(
   });
   ipcMain.on('window:close', () => mainWindow.close());
 
+  // VEER BLE Service IPC Handlers
+  const { VeerBleService } = require('../services/VeerBleService');
+  const veerBleService = new VeerBleService();
+  veerBleService.setWindow(mainWindow);
+
+  ipcMain.handle('veerBle:scan', async () => {
+    logger.info('IPC invoked: veerBle:scan');
+    return await veerBleService.scan();
+  });
+
+  ipcMain.handle('veerBle:connect', async (_event, deviceId: string) => {
+    logger.info(`IPC invoked: veerBle:connect -> deviceId: ${deviceId}`);
+    return await veerBleService.connect(deviceId);
+  });
+
+  ipcMain.handle('veerBle:disconnect', async () => {
+    logger.info('IPC invoked: veerBle:disconnect');
+    return await veerBleService.disconnect();
+  });
+
+  ipcMain.handle('veerBle:status', async () => {
+    return veerBleService.getStatus();
+  });
+
+  ipcMain.handle('veerBle:testPrint', async () => {
+    logger.info('IPC invoked: veerBle:testPrint');
+    return await veerBleService.testPrint();
+  });
+
+  ipcMain.handle('veerBle:print', async (_event, receiptDataHexOrAscii?: string) => {
+    logger.info('IPC invoked: veerBle:print');
+    return await veerBleService.print(receiptDataHexOrAscii);
+  });
+
   ipcMain.handle('system:getInfo', async () => {
     return {
       platform: os.platform(),

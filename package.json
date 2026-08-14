@@ -25,6 +25,7 @@
   "author": "SEZNIK Engineering Team",
   "license": "MIT",
   "dependencies": {
+    "@abandonware/noble": "^1.9.2-15",
     "@prisma/client": "^5.10.0",
     "adm-zip": "^0.5.10",
     "axios": "^1.6.7",
@@ -57,5 +58,8 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
     "vite": "^5.1.4"
+  },
+  "optionalDependencies": {
+    "@abandonware/noble": "^1.9.2-26"
   }
 }

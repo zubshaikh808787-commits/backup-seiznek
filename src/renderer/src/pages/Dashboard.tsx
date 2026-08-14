@@ -19,6 +19,7 @@ import {
 import { motion } from 'framer-motion';
 import { usePrinterStore } from '../store/usePrinterStore';
 import { RemovePrinterModal } from '../components/RemovePrinterModal';
+import { VeerBleSection } from '../components/VeerBleSection';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -369,6 +370,9 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* VEER Bluetooth Low Energy (BLE) Workflow Section */}
+      <VeerBleSection />
 
       {/* MAIN TWO-COLUMN DASHBOARD GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

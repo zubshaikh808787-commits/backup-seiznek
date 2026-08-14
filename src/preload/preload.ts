@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState } from '../shared/types';
+import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState, VeerBleBridge, VeerBleStatus } from '../shared/types';
 
 const seznikApi: SeznikApiBridge = {
   // Window Controls
@@ -73,4 +73,18 @@ const seznikApi: SeznikApiBridge = {
 };
 
 contextBridge.exposeInMainWorld('seznikApi', seznikApi);
+
+const veerBle: VeerBleBridge = {
+  scan: () => ipcRenderer.invoke('veerBle:scan'),
+  connect: (deviceId: string) => ipcRenderer.invoke('veerBle:connect', deviceId),
+  disconnect: () => ipcRenderer.invoke('veerBle:disconnect'),
+  status: () => ipcRenderer.invoke('veerBle:status'),
+  testPrint: () => ipcRenderer.invoke('veerBle:testPrint'),
+  print: (receiptDataHexOrAscii?: string) => ipcRenderer.invoke('veerBle:print', receiptDataHexOrAscii),
+  onBleStatusChanged: (callback: (status: VeerBleStatus) => void) => {
+    ipcRenderer.on('veerBle:statusChanged', (_event, status) => callback(status));
+  },
+};
+
+contextBridge.exposeInMainWorld('veerBle', veerBle);
 

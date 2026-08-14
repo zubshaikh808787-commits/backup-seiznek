@@ -1,3 +1,4 @@
+
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -85,17 +86,17 @@ if (-not $res) {
 `;
 
 try {
-  const scriptPath = path.join(os.tmpdir(), 'test_winspool.ps1');
-  fs.writeFileSync(scriptPath, RAW_PRINT_SCRIPT_CONTENT, 'utf-8');
+    const scriptPath = path.join(os.tmpdir(), 'test_winspool.ps1');
+    fs.writeFileSync(scriptPath, RAW_PRINT_SCRIPT_CONTENT, 'utf-8');
 
-  const payload = "\x1B\x40\x1B\x61\x01SEZNIK POS STORE\r\n--------------------------------\r\nVEER 58mm TEST RECEIPT\r\n--------------------------------\r\nStatus: REAL PRINT VERIFIED\r\nDate: " + new Date().toLocaleDateString() + "\r\n--------------------------------\r\nTHANK YOU FOR USING SEZNIK!\r\n\r\n\r\n\x1D\x56\x00";
-  const tempFile = path.join(os.tmpdir(), 'test_veer_payload.bin');
-  fs.writeFileSync(tempFile, Buffer.from(payload, 'latin1'));
+    const payload = "\x1B\x40\x1B\x61\x01SEZNIK POS STORE\r\n--------------------------------\r\nVEER 58mm TEST RECEIPT\r\n--------------------------------\r\nStatus: REAL PRINT VERIFIED\r\nDate: " + new Date().toLocaleDateString() + "\r\n--------------------------------\r\nTHANK YOU FOR USING SEZNIK!\r\n\r\n\r\n\x1D\x56\x00";
+    const tempFile = path.join(os.tmpdir(), 'test_veer_payload.bin');
+    fs.writeFileSync(tempFile, Buffer.from(payload, 'latin1'));
 
-  console.log(`Sending print payload (${payload.length} bytes) to "POS58 Printer"...`);
-  const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -PrinterName "POS58 Printer" -FilePath "${tempFile}"`;
-  const out = execSync(cmd).toString();
-  console.log('Result:', out || 'SUCCESS');
+    console.log(`Sending print payload (${payload.length} bytes) to "POS58 Printer"...`);
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -PrinterName "POS58 Printer" -FilePath "${tempFile}"`;
+    const out = execSync(cmd).toString();
+    console.log('Result:', out || 'SUCCESS');
 } catch (err) {
-  console.error('Error testing print:', err.message);
+    console.error('Error testing print:', err.message);
 }

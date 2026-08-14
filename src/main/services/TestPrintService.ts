@@ -8,6 +8,7 @@ import logger from '../logger';
 import { V1PrinterProfileBrand, PrinterProfile, JoshTestPrintResult } from '../../shared/types';
 import { DtpWebService } from './DtpWebService';
 import { JoshPrintPipeline } from './JoshPrintPipeline';
+import { sendRawBytesToSerialPort } from './util/WinSpoolRawPrint';
 
 const execPromise = util.promisify(exec);
 
@@ -394,6 +395,41 @@ export class TestPrintService {
       let channelAError = '';
       let channelBError = '';
       if (os.platform() === 'win32') {
+        // Check if target printer is a Bluetooth COM port printer (e.g. MPT-II on COM4)
+        let isBluetoothPrinter = printerName.toLowerCase().includes('bluetooth') || printerName.toLowerCase().includes('mpt');
+        let currentPort = '';
+        try {
+          const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue).PortName"`);
+          if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
+        } catch (e) {}
+
+        if (currentPort.toLowerCase().startsWith('com') || isBluetoothPrinter) {
+          const targetPort = currentPort || 'COM4';
+          logger.info(`[TestPrintService] Bluetooth/Serial target detected on "${targetPort}". Streaming raw payload directly.`);
+          const serRes = await sendRawBytesToSerialPort(targetPort, Buffer.from(payload, 'latin1'), jobLabel);
+          
+          // Cleanup any spooler ghost jobs
+          setTimeout(async () => {
+            try {
+              await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`);
+            } catch (e) {}
+          }, 500);
+
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+
+          if (serRes.success) {
+            return {
+              success: true,
+              message: `Test print delivered to Bluetooth printer "${printerName}" on ${targetPort} directly ✓`,
+            };
+          } else {
+            return {
+              success: false,
+              message: `Bluetooth print failed on ${targetPort}: ${serRes.message}`,
+            };
+          }
+        }
+
         let resolvedActivePort = 'USB003';
         try {
           const isVeerQueue = printerName.toLowerCase().includes('pos58') || printerName.toLowerCase().includes('veer') || printerName.toLowerCase().includes('receipt');

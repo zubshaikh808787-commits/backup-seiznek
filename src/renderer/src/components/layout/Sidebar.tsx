@@ -44,6 +44,12 @@ export const Sidebar: React.FC = () => {
       badge: totalPrinters > 0 ? totalPrinters : undefined,
     },
     {
+      path: '/josh-setup',
+      labelKey: 'joshSetup',
+      defaultLabel: 'JOSH Bluetooth Setup',
+      icon: <Bluetooth className="w-4 h-4 text-purple-600" />,
+    },
+    {
       path: '/detection',
       labelKey: 'printerDetection',
       defaultLabel: 'USB Printers',
@@ -59,6 +65,12 @@ export const Sidebar: React.FC = () => {
   ];
 
   const systemItems: NavItem[] = [
+    {
+      path: '/diagnostics',
+      labelKey: 'diagnostics',
+      defaultLabel: 'Developer Diagnostics',
+      icon: <Activity className="w-4 h-4 text-purple-500" />,
+    },
     {
       path: '/settings',
       labelKey: 'settings',

@@ -10,6 +10,8 @@ import { Settings } from './pages/Settings';
 import { Logs } from './pages/Logs';
 import { Downloads } from './pages/Downloads';
 import { About } from './pages/About';
+import { JoshBluetoothSetup } from './pages/JoshBluetoothSetup';
+import { DeveloperDiagnostics } from './pages/DeveloperDiagnostics';
 
 export const App: React.FC = () => {
   return (
@@ -19,6 +21,8 @@ export const App: React.FC = () => {
           <Route index element={<Dashboard />} />
           <Route path="detection" element={<PrinterDetection />} />
           <Route path="drivers" element={<DriverInstallation />} />
+          <Route path="josh-setup" element={<JoshBluetoothSetup />} />
+          <Route path="diagnostics" element={<DeveloperDiagnostics />} />
           <Route path="sdk" element={<SDKInstallation />} />
           <Route path="firmware" element={<FirmwareManager />} />
           <Route path="usb" element={<PrinterDetection />} />

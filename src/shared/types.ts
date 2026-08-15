@@ -303,6 +303,102 @@ export interface BluetoothConnectionState {
   errorDetails?: string;
 }
 
+export type JoshSetupStage =
+  | 'IDLE'
+  | 'USB_SCANNING'
+  | 'USB_DETECTED'
+  | 'JOSH_USB_CONFIRMED'
+  | 'DRIVER_INSTALLING'
+  | 'DRIVER_INSTALLED'
+  | 'USB_TEST_PRINTING'
+  | 'USB_TEST_PRINT_SUCCESS'
+  | 'USB_REMOVED'
+  | 'BLE_SCANNING'
+  | 'JOSH_BLE_FOUND'
+  | 'BLE_CONNECTING'
+  | 'BLE_CONNECTED'
+  | 'BLE_SERVICE_DISCOVERY'
+  | 'BLE_READY'
+  | 'BLE_TEST_PRINTING'
+  | 'BLE_TEST_PRINT_SUCCESS'
+  | 'SETUP_COMPLETED'
+  | 'ERROR';
+
+export interface PrinterIdentity {
+  printerModel: 'JOSH' | 'VEER' | 'DEV' | 'AMBIGUOUS' | 'UNKNOWN';
+  connectionType: 'USB' | 'BLE' | 'SPP';
+  deviceId: string;
+  vendorId?: string;
+  productId?: string;
+  pnpDeviceId?: string;
+  bluetoothName?: string;
+  bluetoothAddress?: string;
+  serviceUuid?: string;
+  characteristicUuid?: string;
+  windowsPrinterName?: string;
+  driverName?: string;
+  isConfirmedJosh: boolean;
+  confidenceScore: number;
+  detectionDetails: string[];
+}
+
+export interface JoshBleCandidate {
+  deviceId: string;
+  name: string;
+  address: string;
+  rssi?: number;
+  serviceUuids: string[];
+  characteristicUuids: string[];
+  isConfirmedJosh: boolean;
+  model: string;
+  comPort?: string | null;
+}
+
+export interface JoshSetupState {
+  stage: JoshSetupStage;
+  stageMessage: string;
+  progressPercent: number;
+  usbDetected: boolean;
+  usbPrinterName?: string;
+  driverInstalled: boolean;
+  driverName?: string;
+  usbTestPrintSuccess: boolean;
+  usbDisconnectedPrompt: boolean;
+  bleScanning: boolean;
+  bleCandidates: JoshBleCandidate[];
+  selectedBleDevice?: JoshBleCandidate | null;
+  bleConnected: boolean;
+  bleServiceFound: boolean;
+  bleCharacteristicFound: boolean;
+  bleReady: boolean;
+  bleTestPrintSuccess: boolean;
+  setupCompleted: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  suggestedAction?: string;
+  diagnosticsLog: string[];
+}
+
+export interface JoshBleDiagnosticReport {
+  timestamp: string;
+  windowsBluetoothEnabled: boolean;
+  bluetoothRadios: Array<{ name: string; status: string; instanceId: string }>;
+  nearbyBleDevices: Array<{ name: string; address: string; rssi?: number; services: string[] }>;
+  joshCandidates: JoshBleCandidate[];
+  connectedJoshGatt?: {
+    deviceName: string;
+    address: string;
+    services: Array<{ uuid: string; characteristics: Array<{ uuid: string; properties: string[] }> }>;
+  } | null;
+  dtpWebServiceRunning: boolean;
+  dtpWebPort: number;
+  dtpWebPrinters: any[];
+  windowsSpoolerPrinters: OSPrinterInfo[];
+  selectedJoshPrinter?: PrinterIdentity | null;
+  lastTestPrintResult?: JoshTestPrintResult | null;
+  recentLogs: SystemLogEntry[];
+}
+
 // IPC Channel API Interface exposed via preload contextBridge
 export interface SeznikApiBridge {
   // System & Window Controls
@@ -316,6 +412,19 @@ export interface SeznikApiBridge {
   getV1State: () => Promise<V1OrchestratorState>;
   onV1StateChanged: (callback: (state: V1OrchestratorState) => void) => void;
   triggerManualV1TestPrint: () => Promise<JoshTestPrintResult>;
+
+  // JOSH USB -> BLE 19-Stage Setup Flow
+  startJoshSetupFlow: () => Promise<JoshSetupState>;
+  getJoshSetupState: () => Promise<JoshSetupState>;
+  onJoshSetupStateChanged: (callback: (state: JoshSetupState) => void) => void;
+  confirmJoshUsbDisconnected: () => Promise<JoshSetupState>;
+  selectJoshBleDevice: (deviceId: string) => Promise<JoshSetupState>;
+  triggerJoshBleTestPrint: () => Promise<JoshSetupState>;
+  resetJoshSetupFlow: () => Promise<JoshSetupState>;
+
+  // JOSH Developer Diagnostic Dashboard
+  getJoshDiagnosticReport: () => Promise<JoshBleDiagnosticReport>;
+  runJoshDiagnosticSelfTest: () => Promise<JoshBleDiagnosticReport>;
 
   // DothanTech DtpWeb Print Assistant API
   checkDtpWebPlugin: () => Promise<{ running: boolean; message: string }>;

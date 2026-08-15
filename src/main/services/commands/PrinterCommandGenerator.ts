@@ -32,19 +32,24 @@ export class JoshLabelCommands {
   }
 }
 
+import { EscPosImageHelper } from './EscPosImageHelper';
+
 export class VeerReceiptCommands {
   static createTestReceipt(): Buffer {
     const dateStr = new Date().toLocaleDateString();
-    const payload = 
-      "\x1B\x40" + // Init
-      "\x1B\x61\x01" + // Center
+    const initCmd = Buffer.from("\x1B\x40\x1B\x61\x01", 'latin1'); // Init + Center
+    const logoImageCmd = EscPosImageHelper.generateSeznikLogoRaster(384, 64); // ESC/POS GS v 0 raster bit image
+
+    const textPayload = 
+      "\r\n\x1B\x61\x01" + // Center
       "SEZNIK POS STORE\r\n" +
       "GSTIN: 27AAAAA0000A1Z5\r\n" +
       "--------------------------------\r\n" +
-      "VEER 58mm TEST RECEIPT\r\n" +
+      "VEER 58mm GRAPHICS & TEXT TEST\r\n" +
       "--------------------------------\r\n" +
       "\x1B\x61\x00" + // Left
       `Date: ${dateStr}\r\n` +
+      "Graphics: ESC/POS GS v 0 VERIFIED\r\n" +
       "Status: PHYSICAL PRINT VERIFIED\r\n" +
       "--------------------------------\r\n" +
       "Item                 Qty     Amt\r\n" +
@@ -56,7 +61,9 @@ export class VeerReceiptCommands {
       "\x1B\x61\x01" + // Center
       "THANK YOU FOR USING SEZNIK!\r\n\r\n\r\n\r\n" +
       "\x1D\x56\x00"; // Cut
-    return Buffer.from(payload, 'latin1');
+
+    const textBuf = Buffer.from(textPayload, 'latin1');
+    return Buffer.concat([initCmd, logoImageCmd, textBuf]);
   }
 
   static createCustomReceipt(items: { name: string; qty: number; price: number }[]): Buffer {

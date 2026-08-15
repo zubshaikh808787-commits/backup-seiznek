@@ -16,6 +16,21 @@ const seznikApi: SeznikApiBridge = {
   },
   triggerManualV1TestPrint: () => ipcRenderer.invoke('v1:triggerTestPrint'),
 
+  // JOSH USB -> BLE 19-Stage Setup Flow
+  startJoshSetupFlow: () => ipcRenderer.invoke('josh:startSetup'),
+  getJoshSetupState: () => ipcRenderer.invoke('josh:getState'),
+  onJoshSetupStateChanged: (callback: (state: any) => void) => {
+    ipcRenderer.on('event:joshSetupStateChanged', (_event, state) => callback(state));
+  },
+  confirmJoshUsbDisconnected: () => ipcRenderer.invoke('josh:confirmUsbDisconnected'),
+  selectJoshBleDevice: (deviceId: string) => ipcRenderer.invoke('josh:selectBleDevice', deviceId),
+  triggerJoshBleTestPrint: () => ipcRenderer.invoke('josh:triggerBleTestPrint'),
+  resetJoshSetupFlow: () => ipcRenderer.invoke('josh:resetSetup'),
+
+  // JOSH Developer Diagnostic Dashboard
+  getJoshDiagnosticReport: () => ipcRenderer.invoke('josh:getDiagnosticReport'),
+  runJoshDiagnosticSelfTest: () => ipcRenderer.invoke('josh:runDiagnosticSelfTest'),
+
   // Hardware & Printers
   scanDevices: () => ipcRenderer.invoke('printer:scan'),
   getConnectedPrinter: () => ipcRenderer.invoke('printer:getConnected'),

@@ -199,7 +199,12 @@ export async function sendRawBytesToPrinterQueue(
     logger.info(`[WinSpoolRawPrint] Delivered ${data.length} bytes to "${queueName}" via WinSpool RAW ✓`);
     return { success: true, message: `${jobLabel} (${data.length} bytes) delivered to "${queueName}" via the Windows print queue.` };
   } catch (err: any) {
-    const detail: string = err.stderr || err.message || 'Unknown WinSpool error';
+    let detail: string = err.stderr || err.message || 'Unknown WinSpool error';
+    if (detail.includes('OpenPrinter/WritePrinter returned false')) {
+      detail = `Printer queue "${queueName}" returned offline or error. Ensure printer is connected and powered on.`;
+    } else if (detail.includes('Command failed')) {
+      detail = `Could not communicate with printer queue "${queueName}". Verify printer connection.`;
+    }
     logger.error(`[WinSpoolRawPrint ERROR] Failed writing to "${queueName}": ${detail}`);
     return { success: false, message: detail };
   } finally {
@@ -337,14 +342,14 @@ export async function sendRawBytesToSerialPort(
   }
 
   // If portNameOrMac is a Bluetooth device or MAC, route to WinRT RFCOMM socket!
-  const isBluetooth = portNameOrMac.toLowerCase().includes('com') || 
-                      portNameOrMac.toLowerCase().includes('bluetooth') || 
-                      portNameOrMac.toLowerCase().includes('mpt') ||
-                      /^[0-9a-f]{12}$/i.test(portNameOrMac.replace(/[:\-]/g, ''));
+  const cleanMac = portNameOrMac.replace(/[:\-]/g, '').trim();
+  const isMacAddress = /^[0-9a-f]{12}$/i.test(cleanMac);
+  const isBluetoothName = portNameOrMac.toLowerCase().includes('bluetooth') || 
+                          portNameOrMac.toLowerCase().includes('mpt');
 
-  if (isBluetooth) {
+  if (isMacAddress || isBluetoothName) {
     logger.info(`[sendRawBytesToSerialPort] Routing Bluetooth target "${portNameOrMac}" through WinRT RFCOMM socket...`);
-    const macHex = portNameOrMac.replace(/[:\-]/g, '').length === 12 ? portNameOrMac : '606E4101486A';
+    const macHex = isMacAddress ? cleanMac : '606E4101486A';
     const winRtRes = await sendRawBytesToWinRtBluetooth(macHex, data, jobLabel);
     if (winRtRes.success) {
       return winRtRes;

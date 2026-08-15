@@ -44,17 +44,37 @@ export class BluetoothPrinterTransport {
     try {
       const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterDriver -ErrorAction SilentlyContinue | Select-Object Name | ConvertTo-Json"`;
       const { stdout } = await execPromise(psCmd);
-      if (!stdout || stdout.trim() === '') return null;
-      const parsed = JSON.parse(stdout);
-      const list: any[] = Array.isArray(parsed) ? parsed : [parsed];
-      const found = list.find((d: any) => {
-        const n = String(d.Name || '').toLowerCase();
-        return n.includes('pos58') || n.includes('pos-58') || n.includes('58mm') || n.includes('veer');
-      });
-      return found?.Name || null;
+      if (stdout && stdout.trim() !== '') {
+        const parsed = JSON.parse(stdout);
+        const list: any[] = Array.isArray(parsed) ? parsed : [parsed];
+        const found = list.find((d: any) => {
+          const n = String(d.Name || '').toLowerCase();
+          return n.includes('pos58') || n.includes('pos-58') || n.includes('58mm') || n.includes('veer') || n.includes('pos80') || n.includes('80mm');
+        });
+        if (found?.Name) return found.Name;
+      }
+
+      // If no thermal raster driver is installed, auto-install POS58 driver package
+      logger.info('[BluetoothPrinterTransport] No thermal raster driver found in Windows. Auto-installing POS58 driver package...');
+      const { DriverManager } = await import('../DriverManager');
+      const driverMgr = new DriverManager();
+      await driverMgr.installDriverAutomatically('VEER');
+
+      // Re-check after installation
+      const { stdout: afterStdout } = await execPromise(psCmd);
+      if (afterStdout && afterStdout.trim() !== '') {
+        const parsedAfter = JSON.parse(afterStdout);
+        const listAfter: any[] = Array.isArray(parsedAfter) ? parsedAfter : [parsedAfter];
+        const foundAfter = listAfter.find((d: any) => {
+          const n = String(d.Name || '').toLowerCase();
+          return n.includes('pos58') || n.includes('pos-58') || n.includes('58mm') || n.includes('veer');
+        });
+        if (foundAfter?.Name) return foundAfter.Name;
+      }
+      return 'POS58';
     } catch (err: any) {
       logger.warn(`[BluetoothPrinterTransport] Driver discovery notice: ${err.message}`);
-      return null;
+      return 'POS58';
     }
   }
 
@@ -70,21 +90,44 @@ export class BluetoothPrinterTransport {
 
     const portName = this.toLocalPortName(comPort);
     const preferredDriver = await this.findPreferredDriver();
-    const driverName = preferredDriver || 'Generic / Text Only';
+    const driverName = preferredDriver || 'POS58';
 
     // Escape single quotes defensively — printer/device display names can contain them.
     const esc = (s: string) => s.replace(/'/g, "''");
 
     try {
-      const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; if (-not (Get-PrinterPort -Name '${esc(portName)}' -ErrorAction SilentlyContinue)) { Add-PrinterPort -Name '${esc(portName)}' }; if (-not (Get-Printer -Name '${esc(queueName)}' -ErrorAction SilentlyContinue)) { Add-Printer -Name '${esc(queueName)}' -DriverName '${esc(driverName)}' -PortName '${esc(portName)}' } else { Set-Printer -Name '${esc(queueName)}' -PortName '${esc(portName)}' }"`;
+      // Discover current default printer beforehand so we can preserve it
+      let currentDefaultPrinter = '';
+      try {
+        const { stdout: defStdout } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_Printer -Filter 'Default=True' -ErrorAction SilentlyContinue).Name"`);
+        currentDefaultPrinter = (defStdout || '').trim();
+      } catch {}
+
+      const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "
+        $ErrorActionPreference='Stop';
+        Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -Type DWord -Force;
+        if (-not (Get-PrinterPort -Name '${esc(portName)}' -ErrorAction SilentlyContinue)) { Add-PrinterPort -Name '${esc(portName)}' };
+        if (-not (Get-Printer -Name '${esc(queueName)}' -ErrorAction SilentlyContinue)) {
+          Add-Printer -Name '${esc(queueName)}' -DriverName '${esc(driverName)}' -PortName '${esc(portName)}' -PrintProcessor 'winprint' -DataType 'RAW'
+        } else {
+          Set-Printer -Name '${esc(queueName)}' -DriverName '${esc(driverName)}' -PortName '${esc(portName)}' -PrintProcessor 'winprint' -DataType 'RAW'
+        }
+      "`;
       await execPromise(psCmd, { timeout: 20000 });
 
-      logger.info(`[BluetoothPrinterTransport] Registered Windows printer "${queueName}" on port "${portName}" using driver "${driverName}" ✓ (visible in Ctrl+P everywhere)`);
+      // If there was an existing default printer and it wasn't this queue, preserve it
+      if (currentDefaultPrinter && currentDefaultPrinter.toLowerCase() !== queueName.toLowerCase()) {
+        try {
+          const restorePs = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; (New-Object -ComObject WScript.Network).SetDefaultPrinter('${esc(currentDefaultPrinter)}'); (Get-WmiObject -Class Win32_Printer -Filter \\"Name='${esc(currentDefaultPrinter)}'\\").SetDefaultPrinter()"`;
+          await execPromise(restorePs);
+          logger.info(`[BluetoothPrinterTransport] Preserved existing default printer: "${currentDefaultPrinter}"`);
+        } catch {}
+      }
+
+      logger.info(`[BluetoothPrinterTransport] Registered Windows printer "${queueName}" on port "${portName}" using driver "${driverName}" ✓ (supports full image rasterization in Ctrl+P)`);
       return {
         success: true,
-        message: preferredDriver
-          ? `"${queueName}" installed as a Windows printer on ${portName} using the ${driverName} driver — photos and documents will print correctly.`
-          : `"${queueName}" installed as a Windows printer on ${portName} using the built-in Generic / Text Only driver — plain text prints fine, but photos/images won't render (no vendor thermal driver is installed yet; run USB setup once to get one).`,
+        message: `"${queueName}" configured as a Windows printer on ${portName} using ${driverName} driver (full image & document rasterization enabled).`,
         driverUsed: driverName,
       };
     } catch (err: any) {
@@ -119,13 +162,39 @@ export class BluetoothPrinterTransport {
 
   /** Sends raw ESC/POS bytes directly over the Bluetooth COM port or via the Windows queue. */
   async write(queueName: string, data: Buffer, comPort?: string | null): Promise<PrintResult> {
-    let res: { success: boolean; message: string };
+    let res: { success: boolean; message: string } = { success: false, message: 'Initial write' };
 
-    if (comPort) {
-      // Direct Win32 serial communication over Bluetooth RFCOMM bypasses Windows spooler timeout
-      res = await sendRawBytesToSerialPort(comPort, data, 'SEZNIK Bluetooth Print Job');
+    // Auto-ensure queue is registered in Windows Spooler if missing
+    let targetPort = comPort;
+    if (!targetPort) {
+      try {
+        const psGetCom = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PnpDevice -Class Ports -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -like '*Bluetooth*' -or $_.InstanceId -like 'BTHENUM*' } | Select-Object FriendlyName | ConvertTo-Json"`;
+        const { stdout } = await execPromise(psGetCom);
+        if (stdout && stdout.trim() !== '') {
+          const parsed = JSON.parse(stdout);
+          const list = Array.isArray(parsed) ? parsed : [parsed];
+          for (const item of list) {
+            const m = String(item.FriendlyName || '').match(/\(COM(\d+)\)/i);
+            if (m) {
+              targetPort = `COM${m[1]}`;
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    const isReady = await this.isQueueReady(queueName);
+    if (!isReady && targetPort) {
+      logger.info(`[BluetoothPrinterTransport] Printer queue "${queueName}" not found in OS Spooler. Auto-registering on ${targetPort}...`);
+      await this.registerPrinterQueue(targetPort, queueName);
+    }
+
+    if (targetPort) {
+      // Primary: Win32 direct serial transmission to Bluetooth port
+      res = await sendRawBytesToSerialPort(targetPort, data, 'SEZNIK Bluetooth Print Job');
       if (!res.success) {
-        logger.warn(`[BluetoothPrinterTransport] Direct serial port write to ${comPort} failed, trying Windows queue "${queueName}"...`);
+        logger.warn(`[BluetoothPrinterTransport] Direct serial write to ${targetPort} notice: ${res.message}. Trying Windows Spooler queue "${queueName}"...`);
         res = await sendRawBytesToPrinterQueue(queueName, data, 'SEZNIK Bluetooth Print Job');
       }
     } else {

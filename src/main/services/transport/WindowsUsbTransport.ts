@@ -184,10 +184,10 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
       logger.info(`[WindowsUsbTransport] Detected Bluetooth/Serial port "${activePort}". Using direct serial streaming.`);
       const serRes = await sendRawBytesToSerialPort(activePort, data, 'SEZNIK Bluetooth Print Job');
       
-      // Cleanup any stuck jobs
+      // Cleanup any stuck error jobs
       setTimeout(async () => {
         try {
-          const psCleanup = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`;
+          const psCleanup = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue"`;
           await execPromise(psCleanup);
         } catch (e) {}
       }, 500);
@@ -206,7 +206,7 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
 
     try {
       // Step 1: Pre-print Maintenance -> Clear stuck spooler error jobs & set queue port to active USB port
-      const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${queueName}' -PortName '${activePort}' -ErrorAction SilentlyContinue"`;
+      const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${queueName}' -PortName '${activePort}' -ErrorAction SilentlyContinue"`;
       await execPromise(psPrep).catch(() => {});
 
       // Step 2: Write raw payload to temp file
@@ -219,14 +219,6 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
       const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${rawScriptPath}" -PrinterName "${queueName}" -FilePath "${tempFile}"`;
       await execPromise(psCmd);
       logger.info(`[WindowsUsbTransport] WinSpool API write (${data.length} bytes) to "${queueName}" on "${activePort}" succeeded ✓`);
-
-      // Step 4: Post-print Maintenance -> Clean up any stuck spooler error jobs created by vendor driver
-      setTimeout(async () => {
-        try {
-          const psCleanup = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`;
-          await execPromise(psCleanup);
-        } catch (e) {}
-      }, 500);
 
       // Cleanup temp binary file
       try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
@@ -292,7 +284,7 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
             specificPorts.sort((a: any, b: any) => {
               const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
               const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-              return numA - numB;
+              return numB - numA;
             });
             return specificPorts[0].Name;
           }
@@ -304,6 +296,11 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
           });
 
           if (genericUsbPorts.length > 0) {
+            genericUsbPorts.sort((a: any, b: any) => {
+              const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+              const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+              return numB - numA;
+            });
             return genericUsbPorts[0].Name;
           }
         } else if (brand === 'JOSH') {

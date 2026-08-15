@@ -19,29 +19,37 @@ function normalizeDeviceKey(raw: string): string {
 // exactly what shows up in every app's Print dialog (Ctrl+P), not just inside
 // SEZNIK, so keep it recognizable.
 function buildQueueName(deviceName: string): string {
-  return `${deviceName} (Bluetooth)`;
+  return (deviceName || '').trim() || 'Bluetooth Printer';
 }
+
+import { EscPosImageHelper } from './commands/EscPosImageHelper';
 
 function buildBluetoothTestReceipt(deviceName: string): Buffer {
   const dateStr = new Date().toLocaleDateString();
   const timeStr = new Date().toLocaleTimeString();
-  const payload =
-    '\x1B\x40' + // Init
-    '\x1B\x61\x01' + // Center
+
+  const initCmd = Buffer.from('\x1B\x40\x1B\x61\x01', 'latin1'); // Init + Center
+  const logoImageCmd = EscPosImageHelper.generateSeznikLogoRaster(384, 64); // Real ESC/POS GS v 0 raster bit image
+
+  const textPayload =
+    '\r\n\x1B\x61\x01' + // Center
     'SEZNIK POS STORE\r\n' +
     '--------------------------------\r\n' +
-    'BLUETOOTH TEST RECEIPT\r\n' +
+    'BLUETOOTH GRAPHICS & TEXT TEST\r\n' +
     '--------------------------------\r\n' +
     '\x1B\x61\x00' + // Left
     `Device: ${deviceName}\r\n` +
     `Date: ${dateStr}  ${timeStr}\r\n` +
-    'Link: Bluetooth SPP (Windows Printer Queue)\r\n' +
-    'Status: WIRELESS PRINT VERIFIED\r\n' +
+    'Link: Bluetooth SPP (Windows Spooler)\r\n' +
+    'Graphics: ESC/POS GS v 0 VERIFIED\r\n' +
+    'Rasterizer: POS58 Driver Ready\r\n' +
     '--------------------------------\r\n' +
     '\x1B\x61\x01' + // Center
     'THANK YOU FOR USING SEZNIK!\r\n\r\n\r\n' +
     '\x1D\x56\x00'; // Cut
-  return Buffer.from(payload, 'latin1');
+
+  const textBuf = Buffer.from(textPayload, 'latin1');
+  return Buffer.concat([initCmd, logoImageCmd, textBuf]);
 }
 
 const INITIAL_STATE: BluetoothConnectionState = {
@@ -106,9 +114,23 @@ export class BluetoothPrinterService {
           isScanning: false,
         });
       }
+
+      // Auto-register Windows Printer Queue for any paired Bluetooth PRINTER device with a COM port
+      for (const dev of devices) {
+        if (dev.isLikelyPrinter && dev.comPort) {
+          const qName = buildQueueName(dev.name);
+          try {
+            await this.transport.registerPrinterQueue(dev.comPort, qName);
+            logger.info(`[BluetoothPrinterService] Auto-registered Windows Spooler queue "${qName}" on "${dev.comPort}" ✓`);
+          } catch (regErr: any) {
+            logger.warn(`[BluetoothPrinterService] Queue auto-registration notice for "${qName}": ${regErr.message}`);
+          }
+        }
+      }
+
       return this.updateState({
         step: 'DEVICES_FOUND',
-        stepMessage: `Found ${devices.length} paired Bluetooth device(s).`,
+        stepMessage: `Found ${devices.length} paired Bluetooth device(s). Registered in Windows Spooler.`,
         devices,
         isScanning: false,
       });

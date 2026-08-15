@@ -41,9 +41,9 @@ export class BluetoothDiscoveryService {
     if (!instanceId) return null;
     const tokens = instanceId.split(/[\\&_]/);
     for (let i = tokens.length - 1; i >= 0; i--) {
-      const t = tokens[i].trim();
-      if (/^[0-9A-Fa-f]{12}$/.test(t)) {
-        return t.toUpperCase();
+      const t = tokens[i].trim().toUpperCase();
+      if (/^[0-9A-F]{12}$/.test(t) && t !== '000000000000' && t !== 'FFFFFFFFFFFF') {
+        return t;
       }
     }
     return null;
@@ -109,14 +109,18 @@ export class BluetoothDiscoveryService {
       this.scanBluetoothComPorts(),
     ]);
 
-    // Build a map of MAC address -> COM port name from the Ports class scan
+    // Build a map of MAC address / Port Name -> COM port name from the Ports class scan
     const macToComPort = new Map<string, string>();
+    const availableComPorts: string[] = [];
+
     for (const p of portsRaw) {
       const instanceId = p.InstanceId || '';
       const friendly = p.FriendlyName || '';
       const comMatch = friendly.match(/\(COM(\d+)\)/i);
       if (!comMatch) continue;
       const comPort = `COM${comMatch[1]}`;
+      availableComPorts.push(comPort);
+
       const mac = this.extractMacAddress(instanceId);
       if (mac) macToComPort.set(mac, comPort);
     }
@@ -142,7 +146,12 @@ export class BluetoothDiscoveryService {
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
-      const comPort = mac ? macToComPort.get(mac) || null : null;
+      let comPort = mac ? macToComPort.get(mac) || null : null;
+      
+      // Fallback: If MAC correlation missed but Bluetooth COM ports are available, pick the available COM port
+      if (!comPort && availableComPorts.length > 0) {
+        comPort = availableComPorts[0];
+      }
 
       devices.push({
         id: mac || `bt-${name.replace(/\s+/g, '-').toLowerCase()}`,

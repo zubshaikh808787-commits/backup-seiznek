@@ -52,6 +52,7 @@ export const Dashboard: React.FC = () => {
     removeSavedPrinter,
     clearSavedPrinters,
     setSavedDefaultPrinter,
+    setDefaultPrinter,
     removeSavedDefaultPrinter,
     calibratePrinter,
     isScanning,
@@ -117,9 +118,16 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleSetDefaultPrinter = async (id: string) => {
-    const res = await setSavedDefaultPrinter(id);
-    setTestPrintStatus(res.message || 'Set as default printer');
+  const handleSetDefaultPrinter = async (printer: any) => {
+    const targetKey = printer.id || printer.name;
+    setTestPrintStatus(`Setting "${printer.name}" as overall system default printer...`);
+    const res = await setSavedDefaultPrinter(targetKey);
+    if (res.success) {
+      setTestPrintStatus(res.message || `"${printer.name}" is now the overall system default printer ✓`);
+    } else {
+      const fallbackRes = await setDefaultPrinter(printer.name);
+      setTestPrintStatus(fallbackRes.message || `Set "${printer.name}" as default printer.`);
+    }
     setTimeout(() => setTestPrintStatus(null), 3500);
   };
 
@@ -128,6 +136,7 @@ export const Dashboard: React.FC = () => {
 
   // Combine savedPrinters and all OS printers seamlessly
   const combinedList = new Map<string, any>();
+  const savedDefaultPrinter = savedPrinters.find(sp => sp.isDefault || sp.id === defaultPrinterId);
 
   // 1. Add all OS-installed printers from Windows
   osPrinters.forEach((p) => {
@@ -136,13 +145,17 @@ export const Dashboard: React.FC = () => {
       ? true
       : (isUsbConnected && (v1State.queueName?.toLowerCase() === p.name.toLowerCase() || v1State.detectedHardwareName?.toLowerCase() === p.name.toLowerCase()));
 
+    const isThisDefault = savedDefaultPrinter 
+      ? savedDefaultPrinter.name.toLowerCase() === p.name.toLowerCase()
+      : p.isDefault;
+
     combinedList.set(p.name.toLowerCase(), {
       id: `os-${p.name}`,
       name: p.name,
       driverName: p.driverName,
       portName: p.portName || (isBt ? 'COM4' : 'USB001'),
       connectionType: isBt ? 'BLUETOOTH' : 'USB',
-      isDefault: p.isDefault,
+      isDefault: isThisDefault,
       printerType: (p.name.toLowerCase().includes('dp27') || p.name.toLowerCase().includes('josh') || p.name.toLowerCase().includes('label')) ? 'LABEL' : 'RECEIPT',
       savedAt: new Date().toLocaleDateString(),
       isConnected: isThisConnected,
@@ -156,6 +169,10 @@ export const Dashboard: React.FC = () => {
       ? true
       : (isUsbConnected && (v1State.queueName?.toLowerCase() === sp.name.toLowerCase() || v1State.detectedHardwareName?.toLowerCase() === sp.name.toLowerCase()));
 
+    const isThisDefault = savedDefaultPrinter 
+      ? (savedDefaultPrinter.id === sp.id || savedDefaultPrinter.name.toLowerCase() === sp.name.toLowerCase())
+      : sp.isDefault;
+
     const existing = combinedList.get(sp.name.toLowerCase());
     combinedList.set(sp.name.toLowerCase(), {
       ...sp,
@@ -163,8 +180,8 @@ export const Dashboard: React.FC = () => {
       id: sp.id,
       name: sp.name,
       portName: sp.portName || existing?.portName || (isBt ? 'COM4' : 'USB001'),
-      connectionType: isBt ? 'BLUETOOTH' : 'USB',
-      isDefault: sp.isDefault || existing?.isDefault || false,
+      connectionType: isBt ? 'BLUETOOTH' : (existing?.connectionType || 'USB'),
+      isDefault: isThisDefault,
       isConnected: isThisConnected,
     });
   });
@@ -332,7 +349,7 @@ export const Dashboard: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleSetDefaultPrinter(printer.id);
+                          handleSetDefaultPrinter(printer);
                         }}
                         className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-blue-600 shadow-xs"
                         title={t('setDefault', 'Set Default')}
@@ -448,7 +465,7 @@ export const Dashboard: React.FC = () => {
                           </button>
                           {!printer.isDefault && (
                             <button
-                              onClick={() => handleSetDefaultPrinter(printer.id)}
+                              onClick={() => handleSetDefaultPrinter(printer)}
                               className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-all"
                             >
                               {t('setDefault', 'Set Default')}

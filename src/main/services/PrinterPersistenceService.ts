@@ -11,14 +11,16 @@ export class PrinterPersistenceService {
     this.configFilePath = path.join(os.homedir(), '.seznik-printers.json');
   }
 
-  private loadConfig(): { savedPrinters: SavedPrinter[]; defaultPrinterId: string | null } {
+  private loadConfig(): any {
     try {
       if (fs.existsSync(this.configFilePath)) {
         const raw = fs.readFileSync(this.configFilePath, 'utf-8');
         const parsed = JSON.parse(raw);
         return {
+          settings: parsed.settings || {},
           savedPrinters: parsed.savedPrinters || [],
           defaultPrinterId: parsed.defaultPrinterId || null,
+          selectedPrinterId: parsed.selectedPrinterId || null,
         };
       }
     } catch (err: any) {
@@ -27,7 +29,7 @@ export class PrinterPersistenceService {
     return { savedPrinters: [], defaultPrinterId: null };
   }
 
-  private saveConfig(data: { savedPrinters: SavedPrinter[]; defaultPrinterId: string | null }): void {
+  private saveConfig(data: any): void {
     try {
       fs.writeFileSync(this.configFilePath, JSON.stringify(data, null, 2), 'utf-8');
       logger.info(`[PrinterPersistenceService] Saved configuration to disk: ${this.configFilePath}`);
@@ -52,8 +54,10 @@ export class PrinterPersistenceService {
     // Deduplication check: Match by ID, or by (Name + ConnectionType) so a USB
     // queue and a Bluetooth device that happen to share a display name don't collide.
     const existingIndex = data.savedPrinters.findIndex(
-      p => p.id === targetId || (p.name.toLowerCase() === name.toLowerCase() && p.connectionType === connectionType)
+      (p: SavedPrinter) => p.id === targetId || (p.name.toLowerCase() === name.toLowerCase() && p.connectionType === connectionType)
     );
+
+    const isExplicitlyDefault = printer.isDefault === true;
 
     const savedRecord: SavedPrinter = {
       id: targetId,
@@ -61,19 +65,24 @@ export class PrinterPersistenceService {
       driverName: printer.driverName || `${name} Driver`,
       portName: printer.portName || 'USB001',
       connectionType,
-      isDefault: printer.isDefault ?? true,
+      isDefault: isExplicitlyDefault,
       printerType: printer.printerType || 'RECEIPT',
       savedAt: new Date().toISOString(),
       macAddress: printer.macAddress ?? null,
     };
 
-    if (savedRecord.isDefault) {
-      data.savedPrinters.forEach(p => { p.isDefault = false; });
+    if (isExplicitlyDefault) {
+      data.savedPrinters.forEach((p: SavedPrinter) => { p.isDefault = false; });
       data.defaultPrinterId = targetId;
+      data.selectedPrinterId = targetId;
     }
 
     if (existingIndex >= 0) {
-      data.savedPrinters[existingIndex] = savedRecord;
+      data.savedPrinters[existingIndex] = {
+        ...data.savedPrinters[existingIndex],
+        ...savedRecord,
+        isDefault: printer.isDefault !== undefined ? isExplicitlyDefault : data.savedPrinters[existingIndex].isDefault,
+      };
       logger.info(`[PrinterPersistenceService] Updated existing printer record: "${name}" [ID: ${targetId}]`);
     } else {
       data.savedPrinters.push(savedRecord);
@@ -88,7 +97,7 @@ export class PrinterPersistenceService {
   async removeSavedPrinter(printerId: string): Promise<{ success: boolean; removedPrinterId: string; defaultPrinterId: string | null; savedPrinters: SavedPrinter[]; message: string }> {
     logger.info(`[PrinterPersistenceService] Requested to remove printer ID "${printerId}" from configuration.`);
     const data = this.loadConfig();
-    const existing = data.savedPrinters.find(p => p.id === printerId || p.name.toLowerCase() === printerId.toLowerCase());
+    const existing = data.savedPrinters.find((p: SavedPrinter) => p.id === printerId || p.name.toLowerCase() === printerId.toLowerCase());
 
     if (!existing) {
       logger.warn(`[PrinterPersistenceService] Printer ID "${printerId}" not found in saved printers.`);
@@ -104,7 +113,7 @@ export class PrinterPersistenceService {
     const removedId = existing.id;
     const removedName = existing.name;
 
-    data.savedPrinters = data.savedPrinters.filter(p => p.id !== removedId);
+    data.savedPrinters = data.savedPrinters.filter((p: SavedPrinter) => p.id !== removedId);
 
     if (data.defaultPrinterId === removedId || existing.isDefault) {
       if (data.savedPrinters.length > 0) {

@@ -4,27 +4,13 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+    @apply bg-[#F8FAFC] text-slate-800 font-sans antialiased select-none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 }
 
-/* Custom Clean White + Royal Blue Theme Cards */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 4px 20px -2px rgba(37, 99, 235, 0.06);
-}
-
-.glass-panel-light {
-  background: #FFFFFF;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-}
-
+/* Custom Synapse / Fluent Desktop Window Rules */
 .titlebar-drag {
   -webkit-app-region: drag;
 }
@@ -33,18 +19,31 @@
   -webkit-app-region: no-drag;
 }
 
-/* Custom Scrollbars */
+/* Synapse Floating Card Classes */
+.synapse-card {
+  background: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.synapse-card:hover {
+  border-color: rgba(203, 213, 225, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+/* Sleek Minimalist Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.6);
+  background: rgba(203, 213, 225, 0.7);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.8);
+  background: rgba(148, 163, 184, 0.9);
 }

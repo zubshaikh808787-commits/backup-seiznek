@@ -8,6 +8,7 @@ import logger from '../logger';
 import { V1PrinterProfileBrand, PrinterProfile, JoshTestPrintResult } from '../../shared/types';
 import { DtpWebService } from './DtpWebService';
 import { JoshPrintPipeline } from './JoshPrintPipeline';
+import { sendRawBytesToSerialPort } from './util/WinSpoolRawPrint';
 
 const execPromise = util.promisify(exec);
 
@@ -394,6 +395,41 @@ export class TestPrintService {
       let channelAError = '';
       let channelBError = '';
       if (os.platform() === 'win32') {
+        // Check if target printer is a Bluetooth COM port printer (e.g. MPT-II on COM4)
+        let isBluetoothPrinter = printerName.toLowerCase().includes('bluetooth') || printerName.toLowerCase().includes('mpt');
+        let currentPort = '';
+        try {
+          const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue).PortName"`);
+          if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
+        } catch (e) {}
+
+        if (currentPort.toLowerCase().startsWith('com') || isBluetoothPrinter) {
+          const targetPort = currentPort || 'COM4';
+          logger.info(`[TestPrintService] Bluetooth/Serial target detected on "${targetPort}". Streaming raw payload directly.`);
+          const serRes = await sendRawBytesToSerialPort(targetPort, Buffer.from(payload, 'latin1'), jobLabel);
+          
+          // Cleanup any stuck error jobs
+          setTimeout(async () => {
+            try {
+              await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue"`);
+            } catch (e) {}
+          }, 500);
+
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+
+          if (serRes.success) {
+            return {
+              success: true,
+              message: `Test print delivered to Bluetooth printer "${printerName}" on ${targetPort} directly ✓`,
+            };
+          } else {
+            return {
+              success: false,
+              message: `Bluetooth print failed on ${targetPort}: ${serRes.message}`,
+            };
+          }
+        }
+
         let resolvedActivePort = 'USB003';
         try {
           const isVeerQueue = printerName.toLowerCase().includes('pos58') || printerName.toLowerCase().includes('veer') || printerName.toLowerCase().includes('receipt');
@@ -424,7 +460,7 @@ export class TestPrintService {
                   specificPorts.sort((a: any, b: any) => {
                     const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
                     const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                    return numA - numB;
+                    return numB - numA;
                   });
                   resolvedActivePort = specificPorts[0].Name;
                 }
@@ -435,13 +471,18 @@ export class TestPrintService {
                   return name.startsWith('usb') && !desc.includes('dp27') && !desc.includes('detong') && !desc.includes('josh') && desc !== 'virtual printer port for usb';
                 });
                 if (genericUsbPorts.length > 0) {
+                  genericUsbPorts.sort((a: any, b: any) => {
+                    const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+                    const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+                    return numB - numA;
+                  });
                   resolvedActivePort = genericUsbPorts[0].Name;
                 }
               }
 
-              const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${printerName}' -PortName '${resolvedActivePort}' -ErrorAction SilentlyContinue"`;
+              const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${printerName}' -PortName '${resolvedActivePort}' -ErrorAction SilentlyContinue"`;
               await execPromise(psPrep);
-              logger.info(`[TestPrintService] Pre-print maintenance: Cleared queue & set "${printerName}" port to "${resolvedActivePort}" ✓`);
+              logger.info(`[TestPrintService] Pre-print maintenance: Cleared error jobs & set "${printerName}" port to "${resolvedActivePort}" ✓`);
             }
           }
         } catch (ePrep) {}
@@ -458,13 +499,6 @@ export class TestPrintService {
           channelAError = psErr.stderr || psErr.message || 'Unknown WinSpool error';
           logger.warn(`[TestPrintService] WinSpool notice for "${printerName}": ${channelAError}`);
         }
-
-        // Post-print Cleanup: Remove any stuck spooler error jobs created by vendor driver
-        setTimeout(async () => {
-          try {
-            await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`);
-          } catch (e) {}
-        }, 500);
       } else {
         await execPromise(`lpr -P "${printerName}" "${tempFile}"`);
         channelASuccess = true;

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Printer, Zap, RefreshCw } from 'lucide-react';
+import { Printer, Globe, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { WindowControls } from './WindowControls';
 import { usePrinterStore } from '../../store/usePrinterStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export const Header: React.FC = () => {
-  const { v1State, osPrinters, savedPrinters, startV1Pipeline, fetchOsPrinters, fetchSavedPrinters } = usePrinterStore();
+  const { t, language, setLanguage } = useTranslation();
+  const { v1State, fetchOsPrinters, fetchSavedPrinters } = usePrinterStore();
   const [platform, setPlatform] = useState<string>('win32');
 
   useEffect(() => {
@@ -16,50 +18,46 @@ export const Header: React.FC = () => {
   const isUsbConnected = v1State.usbConnected;
 
   return (
-    <header className="h-[38px] bg-slate-900 border-b border-slate-800/90 px-3 flex items-center justify-between select-none titlebar-drag shrink-0 z-50 text-slate-300">
-      {/* Left Branding */}
-      <div className="flex items-center space-x-2.5 titlebar-no-drag">
-        <div className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center text-white">
-          <Printer className="w-3.5 h-3.5 text-white" />
-        </div>
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-black tracking-wider text-slate-100 uppercase">
-            SEZNIK PRINTER MANAGER
-          </span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold border border-slate-700">
-            v1.0 ({platform === 'win32' ? 'Windows' : 'macOS'})
-          </span>
-        </div>
+    <header className="h-[44px] bg-[#F8FAFC] border-b border-slate-200/80 px-4 flex items-center justify-between select-none titlebar-drag shrink-0 z-50 text-slate-700">
+      {/* Left Breadcrumb (Synapse Style) */}
+      <div className="flex items-center space-x-2 text-xs titlebar-no-drag">
+        <span className="text-slate-400 font-medium flex items-center gap-1.5">
+          <Printer className="w-3.5 h-3.5 text-slate-400" />
+          {t('docsBreadcrumb', 'Printers')}
+        </span>
+        <span className="text-slate-300">•</span>
+        <span className="font-semibold text-slate-800">
+          {t('overviewBreadcrumb', 'Device Overview')}
+        </span>
       </div>
 
-      {/* Center Status Pill */}
-      <div className="hidden md:flex items-center space-x-3 titlebar-no-drag">
-        {isUsbConnected ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            1 USB Printer Connected
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-950/80 text-rose-400 border border-rose-800/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-            No USB Printer Connected
-          </span>
-        )}
+      {/* Right Controls: Search / Language / Refresh / Window Controls */}
+      <div className="flex items-center space-x-2.5 titlebar-no-drag">
+        {/* Language Selector Pill */}
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 shadow-2xs rounded-lg px-2 py-1">
+          <Globe className="w-3.5 h-3.5 text-slate-400" />
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as 'en' | 'hi')}
+            className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="en">English</option>
+            <option value="hi">हिंदी</option>
+          </select>
+        </div>
 
+        {/* Refresh Hardware Button */}
         <button
           onClick={() => { fetchOsPrinters(); fetchSavedPrinters(); }}
-          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-          title="Refresh Hardware Scanning"
+          className="p-1.5 rounded-lg bg-white border border-slate-200 shadow-2xs text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
+          title="Refresh Connected Devices"
         >
-          <RefreshCw className="w-3 h-3" />
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
-      </div>
 
-      {/* Right Window Controls */}
-      <div className="flex items-center space-x-2 titlebar-no-drag">
+        {/* Native-style Window Controls */}
         <WindowControls />
       </div>
     </header>
   );
 };
-

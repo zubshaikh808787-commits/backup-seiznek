@@ -220,7 +220,7 @@ export const usePrinterStore = create<PrinterStoreState>((set, get) => ({
       const defPrinter = saved.find(p => p.isDefault);
       set({ 
         savedPrinters: saved || [],
-        defaultPrinterId: defPrinter ? defPrinter.id : (saved.length > 0 ? saved[0].id : null)
+        defaultPrinterId: defPrinter ? defPrinter.id : null,
       });
     }
   },
@@ -283,6 +283,7 @@ export const usePrinterStore = create<PrinterStoreState>((set, get) => ({
           toastMessage: res.message,
         });
         await get().fetchOsPrinters();
+        await get().fetchSavedPrinters();
         setTimeout(() => set({ toastMessage: null }), 4000);
         return { success: true, message: res.message };
       }

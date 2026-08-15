@@ -95,15 +95,14 @@ export class ConfigurationService implements IConfigurationService {
     
     const existingIndex = this.currentConfig.savedPrinters.findIndex(p => p.id === id || p.name.toLowerCase() === name.toLowerCase());
 
-    const isFirst = this.currentConfig.savedPrinters.length === 0;
-    const shouldBeDefault = printer.isDefault ?? (isFirst || this.currentConfig.defaultPrinterId === null);
+    const shouldBeDefault = printer.isDefault === true;
 
     const newSaved: SavedPrinter = {
       id,
       name,
       driverName: printer.driverName || `${name} Driver`,
       portName: printer.portName || 'USB001',
-      connectionType: 'USB',
+      connectionType: printer.connectionType || 'USB',
       isDefault: shouldBeDefault,
       printerType: printer.printerType || (name.toLowerCase().includes('pos58') || name.toLowerCase().includes('veer') ? 'RECEIPT' : 'LABEL'),
       savedAt: printer.savedAt || new Date().toISOString(),
@@ -115,12 +114,18 @@ export class ConfigurationService implements IConfigurationService {
     }
 
     if (existingIndex >= 0) {
-      this.currentConfig.savedPrinters[existingIndex] = newSaved;
+      this.currentConfig.savedPrinters[existingIndex] = {
+        ...this.currentConfig.savedPrinters[existingIndex],
+        ...newSaved,
+        isDefault: printer.isDefault !== undefined ? Boolean(printer.isDefault) : this.currentConfig.savedPrinters[existingIndex].isDefault,
+      };
     } else {
       this.currentConfig.savedPrinters.push(newSaved);
     }
 
-    this.currentConfig.selectedPrinterId = id;
+    if (shouldBeDefault) {
+      this.currentConfig.selectedPrinterId = id;
+    }
     this.saveConfigToDisk();
 
     return {
@@ -181,20 +186,36 @@ export class ConfigurationService implements IConfigurationService {
     };
   }
 
-  async setSavedDefaultPrinter(printerId: string): Promise<SetSavedDefaultResult> {
-    const target = this.currentConfig.savedPrinters.find(p => p.id === printerId || p.name.toLowerCase() === printerId.toLowerCase());
+  async setSavedDefaultPrinter(printerIdOrName: string): Promise<SetSavedDefaultResult> {
+    const raw = (printerIdOrName || '').trim();
+    const cleanName = raw.replace(/^(os-|v1-|seznik-bt-|seznik-)/i, '').trim();
 
+    let target = this.currentConfig.savedPrinters.find(p => 
+      p.id.toLowerCase() === raw.toLowerCase() ||
+      p.name.toLowerCase() === raw.toLowerCase() ||
+      p.name.toLowerCase() === cleanName.toLowerCase() ||
+      p.id.toLowerCase().includes(cleanName.toLowerCase())
+    );
+
+    // If not found in saved configuration, create a new saved record for it automatically
     if (!target) {
-      return {
-        success: false,
-        defaultPrinterId: this.currentConfig.defaultPrinterId,
-        savedPrinters: this.currentConfig.savedPrinters,
-        message: 'Printer not found in saved configuration.',
+      const displayName = raw.replace(/^(os-|v1-)/i, '').trim();
+      const newId = `seznik-${displayName.replace(/\s+/g, '-').toLowerCase()}`;
+      target = {
+        id: newId,
+        name: displayName,
+        driverName: `${displayName} Driver`,
+        portName: displayName.toLowerCase().includes('bluetooth') ? 'COM4' : 'USB001',
+        connectionType: displayName.toLowerCase().includes('bluetooth') ? 'BLUETOOTH' : 'USB',
+        isDefault: true,
+        printerType: displayName.toLowerCase().includes('pos58') || displayName.toLowerCase().includes('veer') ? 'RECEIPT' : 'LABEL',
+        savedAt: new Date().toISOString(),
       };
+      this.currentConfig.savedPrinters.push(target);
     }
 
     this.currentConfig.savedPrinters.forEach(p => {
-      p.isDefault = (p.id === target.id);
+      p.isDefault = (p.id === target!.id);
     });
 
     this.currentConfig.defaultPrinterId = target.id;
@@ -203,19 +224,20 @@ export class ConfigurationService implements IConfigurationService {
     this.saveConfigToDisk();
 
     // Set as Overall System OS Default Printer in Windows
+    const printerName = target.name;
     if (os.platform() === 'win32') {
       try {
-        const psComCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; (New-Object -ComObject WScript.Network).SetDefaultPrinter('${target.name}')"`;
-        await execPromise(psComCmd);
-        const wmiCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-WmiObject -Class Win32_Printer -Filter \\"Name='${target.name}'\\").SetDefaultPrinter()"`;
-        await execPromise(wmiCmd);
-        logger.info(`[ConfigurationService] Set "${target.name}" as overall Windows system default printer.`);
+        const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -Type DWord -Force; (New-Object -ComObject WScript.Network).SetDefaultPrinter('${printerName}'); Start-Process -FilePath 'rundll32.exe' -ArgumentList 'printui.dll,PrintUIEntry /y /n \\"${printerName}\\"' -WindowStyle Hidden; \$wmi = Get-WmiObject -Class Win32_Printer -Filter \\"Name='${printerName}'\\"; if (\$wmi) { \$wmi.SetDefaultPrinter() }; Set-Printer -Name '${printerName}' -IsDefault \$true"`;
+        const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+        const execAsync = execPromise(psCmd).then(() => {}).catch(() => {});
+        await Promise.race([execAsync, timeoutPromise]);
+        logger.info(`[ConfigurationService] Set "${printerName}" as overall Windows system default printer.`);
       } catch (err: any) {
         logger.warn(`[ConfigurationService] Windows set default notice: ${err.message}`);
       }
     } else {
       try {
-        await execPromise(`lpoptions -d "${target.name}"`);
+        await execPromise(`lpoptions -d "${printerName}"`);
       } catch {}
     }
 

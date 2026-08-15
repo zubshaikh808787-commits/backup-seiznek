@@ -203,7 +203,7 @@ export class DriverManager {
                 specificPorts.sort((a: any, b: any) => {
                   const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
                   const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                  return numA - numB;
+                  return numB - numA;
                 });
                 targetPort = specificPorts[0].Name;
               }
@@ -214,13 +214,18 @@ export class DriverManager {
                 return name.startsWith('usb') && !desc.includes('dp27') && !desc.includes('detong') && !desc.includes('josh') && desc !== 'virtual printer port for usb';
               });
               if (genericUsbPorts.length > 0) {
+                genericUsbPorts.sort((a: any, b: any) => {
+                  const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+                  const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+                  return numB - numA;
+                });
                 targetPort = genericUsbPorts[0].Name;
               }
             }
           }
         } catch (ePort) {}
 
-        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue; if (-not (Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'POS58 Printer' -DriverName '${matchedDriver}' -PortName '${targetPort}' -ErrorAction SilentlyContinue } else { Set-Printer -Name 'POS58 Printer' -PortName '${targetPort}' -ErrorAction SilentlyContinue }"`;
+        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; if (-not (Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'POS58 Printer' -DriverName '${matchedDriver}' -PortName '${targetPort}' -ErrorAction SilentlyContinue } else { Set-Printer -Name 'POS58 Printer' -PortName '${targetPort}' -ErrorAction SilentlyContinue }"`;
         await execPromise(psEnsureQueue);
         logger.info(`[DriverManager] Ensured OS Spooler Queue "POS58 Printer" using driver "${matchedDriver}" on port "${targetPort}" ✓`);
 

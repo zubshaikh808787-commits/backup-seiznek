@@ -12,6 +12,7 @@ import { LoggingService } from '../../services/LoggingService';
 import { PrinterSetupOrchestrator } from '../services/PrinterSetupOrchestrator';
 import { DtpWebService } from '../services/DtpWebService';
 import { BluetoothPrinterService } from '../services/BluetoothPrinterService';
+import { registerJoshIpcHandlers } from './josh.ipc';
 import logger from '../logger';
 
 export function registerIpcHandlers(
@@ -212,11 +213,12 @@ export function registerIpcHandlers(
     return res;
   });
 
-  ipcMain.handle('printer:setSavedDefault', async (_event, printerId: string) => {
-    const res = await configService.setSavedDefaultPrinter(printerId);
+  ipcMain.handle('printer:setSavedDefault', async (_event, printerIdOrName: string) => {
+    logger.info(`IPC printer:setSavedDefault invoked for: ${printerIdOrName}`);
+    const res = await configService.setSavedDefaultPrinter(printerIdOrName);
     if (res.success && res.defaultPrinterId) {
       const savedList = await configService.getSavedPrinters();
-      const target = savedList.find(p => p.id === printerId);
+      const target = savedList.find(p => p.id === res.defaultPrinterId || p.id === printerIdOrName || p.name.toLowerCase() === printerIdOrName.toLowerCase());
       if (target) {
         await printerService.setDefaultPrinter(target.name);
       }
@@ -233,12 +235,9 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle('printer:setDefault', async (_event, printerName: string) => {
-    const res = await printerService.setDefaultPrinter(printerName);
-    const savedList = await configService.getSavedPrinters();
-    const matched = savedList.find(p => p.name.toLowerCase() === printerName.toLowerCase() || printerName.toLowerCase().includes(p.name.toLowerCase()));
-    if (matched) {
-      await configService.setSavedDefaultPrinter(matched.id);
-    }
+    logger.info(`IPC printer:setDefault invoked for: ${printerName}`);
+    const res = await configService.setSavedDefaultPrinter(printerName);
+    await printerService.setDefaultPrinter(printerName);
     await loggingService.logAction('SET_DEFAULT_PRINTER', res.message, res.success ? 'INFO' : 'WARN');
     return res;
   });
@@ -403,6 +402,9 @@ export function registerIpcHandlers(
     await loggingService.logAction('DTPWEB_PRINT_TEST_LABEL', res.message, res.success ? 'INFO' : 'ERROR');
     return res;
   });
+
+  // JOSH Real USB -> BLE Setup & Diagnostic IPC Handlers
+  registerJoshIpcHandlers(mainWindow);
 
   // USB Monitoring
   ipcMain.handle('usb:startMonitoring', async () => {

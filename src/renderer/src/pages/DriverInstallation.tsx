@@ -1,5 +1,5 @@
 import React from 'react';
-import { HardDriveDownload, ShieldCheck, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { HardDriveDownload, ShieldCheck, CheckCircle2, RefreshCw, AlertCircle, FileText } from 'lucide-react';
 import { usePrinterStore } from '../store/usePrinterStore';
 
 export const DriverInstallation: React.FC = () => {
@@ -9,130 +9,125 @@ export const DriverInstallation: React.FC = () => {
 
   const handleInstallJosh = async () => {
     setIsInstalling(true);
-    setLogMessage('Launching JOSH Driver Installer (Win Driver Driver JOSH Label Printer.exe / DTPWeb)...');
+    setLogMessage('Setting up Label Printer Driver...');
     const res = await installJoshDriver();
-    setLogMessage(res.log);
+    setLogMessage(res.success ? 'Label printer driver ready ✓' : res.log);
     await fetchOsPrinters();
     setIsInstalling(false);
   };
 
   const handleInstallVeer = async () => {
     setIsInstalling(true);
-    setLogMessage('Launching VEER Driver Installer (POS58Setup_20210916.exe)...');
+    setLogMessage('Setting up Receipt Printer Driver...');
     const res = await installVeerDriver();
-    setLogMessage(res.log);
+    setLogMessage(res.success ? 'Receipt printer driver ready ✓' : res.log);
     await fetchOsPrinters();
     setIsInstalling(false);
   };
 
   const handleInstallDev = async () => {
     setIsInstalling(true);
-    setLogMessage('Launching DEV Driver Installer (Dev Windows Driver.exe / DEV Receipt POS58Setup.exe)...');
+    setLogMessage('Setting up Dual-Mode Printer Driver...');
     if (installDevDriver) {
       const res = await installDevDriver();
-      setLogMessage(res.log);
+      setLogMessage(res.success ? 'Dual-mode printer driver ready ✓' : res.log);
     }
     await fetchOsPrinters();
     setIsInstalling(false);
   };
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto select-none text-slate-800">
-      <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <h1 className="text-sm font-black uppercase text-slate-900 tracking-wider">Driver Installation & Spooler Setup Engine</h1>
-          <p className="text-xs text-slate-500 font-medium">Install official driver packages for JOSH TSPL, VEER ESC/POS, and DEV Dual-Mode hardware</p>
-        </div>
+    <div className="space-y-6 max-w-5xl mx-auto select-none">
+      <div className="pb-2 border-b border-slate-200/60">
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Printer Drivers & Setup</h1>
+        <p className="text-xs text-slate-400 font-medium mt-0.5">Install drivers for SEZNIK thermal label and receipt printers</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* JOSH Driver Box */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
+        {/* Label Driver */}
+        <div className="synapse-card rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
+          <div className="space-y-2">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase text-slate-900">JOSH Label Driver</h3>
-                <p className="text-[11px] text-slate-500 font-medium">Win Driver JOSH / DTPWeb</p>
+                <h3 className="text-xs font-bold text-slate-800">Label Printer Driver</h3>
+                <p className="text-[11px] text-slate-400 font-medium">50×50mm TSPL Protocol</p>
               </div>
             </div>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Standard Windows driver for thermal barcode and product label printing.
+            </p>
           </div>
-
-          <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-            Installs official TSPL spooler driver for 50x50mm thermal label printing and DtpWeb Print Assistant.
-          </p>
 
           <button
             onClick={handleInstallJosh}
             disabled={isInstalling}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5"
+            className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition-all flex items-center justify-center gap-1.5"
           >
             <HardDriveDownload className={`w-3.5 h-3.5 ${isInstalling ? 'animate-spin' : ''}`} />
-            <span>Launch JOSH Driver</span>
+            <span>Install Label Driver</span>
           </button>
         </div>
 
-        {/* VEER Driver Box */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
+        {/* Receipt Driver */}
+        <div className="synapse-card rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
+          <div className="space-y-2">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase text-slate-900">VEER Receipt Driver</h3>
-                <p className="text-[11px] text-slate-500 font-medium">POS58Setup_20210916.exe</p>
+                <h3 className="text-xs font-bold text-slate-800">Receipt Printer Driver</h3>
+                <p className="text-[11px] text-slate-400 font-medium">58mm ESC/POS Protocol</p>
               </div>
             </div>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              Standard Windows spooler driver for continuous receipt and bill printing.
+            </p>
           </div>
-
-          <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-            Installs official 58mm ESC/POS thermal receipt spooler driver for POS receipt printing.
-          </p>
 
           <button
             onClick={handleInstallVeer}
             disabled={isInstalling}
-            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5"
+            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition-all flex items-center justify-center gap-1.5"
           >
             <HardDriveDownload className={`w-3.5 h-3.5 ${isInstalling ? 'animate-spin' : ''}`} />
-            <span>Launch VEER Driver</span>
+            <span>Install Receipt Driver</span>
           </button>
         </div>
 
-        {/* DEV Driver Box */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
+        {/* Dual-Mode Driver */}
+        <div className="synapse-card rounded-2xl p-5 space-y-3.5 flex flex-col justify-between">
+          <div className="space-y-2">
             <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200">
-                <ShieldCheck className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-xs font-black uppercase text-slate-900">DEV Dual-Mode Driver</h3>
-                <p className="text-[11px] text-slate-500 font-medium">Dev Windows Driver.exe</p>
+                <h3 className="text-xs font-bold text-slate-800">Dual-Mode Driver</h3>
+                <p className="text-[11px] text-slate-400 font-medium">80mm Dual Label & Receipt</p>
               </div>
             </div>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              High-performance driver for hybrid receipt and large label thermal hardware.
+            </p>
           </div>
-
-          <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-            Installs official driver for DEV (SZ-80D / POS80) receipt & label printer hardware.
-          </p>
 
           <button
             onClick={handleInstallDev}
             disabled={isInstalling}
-            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5"
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-xs transition-all flex items-center justify-center gap-1.5"
           >
             <HardDriveDownload className={`w-3.5 h-3.5 ${isInstalling ? 'animate-spin' : ''}`} />
-            <span>Launch DEV Driver</span>
+            <span>Install Dual-Mode Driver</span>
           </button>
         </div>
       </div>
 
       {logMessage && (
-        <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs text-emerald-400 font-mono">
+        <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 text-xs text-emerald-400 font-mono">
           {logMessage}
         </div>
       )}

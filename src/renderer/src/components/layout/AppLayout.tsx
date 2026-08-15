@@ -1,12 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 export const AppLayout: React.FC = () => {
+  const fetchSettings = useSettingsStore((state) => state.fetchSettings);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-900 text-slate-900 overflow-hidden select-none">
-      {/* Top Application Titlebar */}
+    <div className="h-screen w-screen flex flex-col bg-[#F8FAFC] text-slate-800 overflow-hidden select-none font-sans">
+      {/* Top Application Titlebar & Header */}
       <Header />
 
       {/* Main Window Body */}
@@ -15,7 +22,7 @@ export const AppLayout: React.FC = () => {
         <Sidebar />
 
         {/* Desktop Viewport Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 bg-slate-100/80">
+        <main className="flex-1 overflow-y-auto p-6 bg-[#F8FAFC]">
           <Outlet />
         </main>
       </div>

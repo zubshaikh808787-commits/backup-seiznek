@@ -16,11 +16,11 @@ export class PrinterConfigurationService {
 
     if (os.platform() === 'win32' && profile.brand === 'JOSH') {
       try {
-        const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like '*${printerName}*' -or $_.Name -like '*LD0801*' -or $_.Name -like '*DP27*' } | Select-Object -First 1; if (\$p) { Set-Printer -Name \$p.Name -PortName 'USB001' -PrintProcessor 'winprint' -DataType 'RAW' -ErrorAction SilentlyContinue }"`;
+        const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like '*${printerName}*' -or $_.Name -like '*LD0801*' -or $_.Name -like '*DP27*' } | Select-Object -First 1; if (\$p) { Set-Printer -Name \$p.Name -PrintProcessor 'winprint' -DataType 'RAW' -ErrorAction SilentlyContinue }"`;
         await execPromise(psCmd);
-        logger.info(`[PrinterConfigurationService] Verified & bound OS Spooler Port "USB001" and Datatype "RAW" for "${printerName}" ✓`);
+        logger.info(`[PrinterConfigurationService] Verified OS Spooler Datatype "RAW" for "${printerName}" ✓`);
       } catch (err: any) {
-        logger.warn(`[PrinterConfigurationService] Port configuration notice: ${err.message}`);
+        logger.warn(`[PrinterConfigurationService] Queue configuration notice: ${err.message}`);
       }
     }
 

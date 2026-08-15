@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import logger from '../../logger';
+import { sendRawBytesToSerialPort } from '../util/WinSpoolRawPrint';
 import { UsbPrinterTransport } from './UsbPrinterTransport';
 import { DetectedPrinter, PrintResult, V1PrinterProfileBrand } from '../../../shared/types';
 import { PrinterCommandGenerator } from '../commands/PrinterCommandGenerator';
@@ -171,13 +172,41 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
     const queueName = matched ? matched.queueName : (printerId.includes('POS58') || printerId.includes('VEER') ? 'POS58 Printer' : 'LD0801 Label Printer');
     const brand = matched ? matched.brand : (queueName.toLowerCase().includes('pos58') || queueName.toLowerCase().includes('veer') ? 'VEER' : 'JOSH');
 
-    // Resolve active physical USB port for device
-    const activePort = await this.resolveActiveUsbPort(brand, queueName);
+    // Resolve active physical USB or serial port for device
+    let activePort = await this.resolveActiveUsbPort(brand, queueName);
+    if (!activePort && matched?.portName) {
+      activePort = matched.portName;
+    }
     logger.info(`[WindowsUsbTransport] Target Queue: "${queueName}" | Verified Active Port: "${activePort}"`);
+
+    // Check if this is a Bluetooth serial COM port
+    if (activePort.toLowerCase().startsWith('com') || queueName.toLowerCase().includes('bluetooth')) {
+      logger.info(`[WindowsUsbTransport] Detected Bluetooth/Serial port "${activePort}". Using direct serial streaming.`);
+      const serRes = await sendRawBytesToSerialPort(activePort, data, 'SEZNIK Bluetooth Print Job');
+      
+      // Cleanup any stuck error jobs
+      setTimeout(async () => {
+        try {
+          const psCleanup = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue"`;
+          await execPromise(psCleanup);
+        } catch (e) {}
+      }, 500);
+
+      return {
+        success: serRes.success,
+        printerId,
+        platform: 'win32',
+        queueName,
+        portName: activePort,
+        bytesSent: serRes.success ? data.length : 0,
+        errorCode: serRes.success ? undefined : 'BT_WRITE_FAILED',
+        errorMessage: serRes.success ? undefined : serRes.message,
+      };
+    }
 
     try {
       // Step 1: Pre-print Maintenance -> Clear stuck spooler error jobs & set queue port to active USB port
-      const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${queueName}' -PortName '${activePort}' -ErrorAction SilentlyContinue"`;
+      const psPrep = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${queueName}' -PortName '${activePort}' -ErrorAction SilentlyContinue"`;
       await execPromise(psPrep).catch(() => {});
 
       // Step 2: Write raw payload to temp file
@@ -190,14 +219,6 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
       const psCmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${rawScriptPath}" -PrinterName "${queueName}" -FilePath "${tempFile}"`;
       await execPromise(psCmd);
       logger.info(`[WindowsUsbTransport] WinSpool API write (${data.length} bytes) to "${queueName}" on "${activePort}" succeeded ✓`);
-
-      // Step 4: Post-print Maintenance -> Clean up any stuck spooler error jobs created by vendor driver
-      setTimeout(async () => {
-        try {
-          const psCleanup = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name '${queueName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Remove-PrintJob -ErrorAction SilentlyContinue"`;
-          await execPromise(psCleanup);
-        } catch (e) {}
-      }, 500);
 
       // Cleanup temp binary file
       try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
@@ -263,7 +284,7 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
             specificPorts.sort((a: any, b: any) => {
               const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
               const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-              return numA - numB;
+              return numB - numA;
             });
             return specificPorts[0].Name;
           }
@@ -275,6 +296,11 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
           });
 
           if (genericUsbPorts.length > 0) {
+            genericUsbPorts.sort((a: any, b: any) => {
+              const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+              const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+              return numB - numA;
+            });
             return genericUsbPorts[0].Name;
           }
         } else if (brand === 'JOSH') {

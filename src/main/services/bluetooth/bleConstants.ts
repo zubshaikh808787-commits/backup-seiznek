@@ -1,0 +1,72 @@
+/**
+ * Bluetooth Low Energy (BLE) and Serial Constants for JOSH Label Printers.
+ * 
+ * Hardware Models: LD0801, DP27, DeTong, PINGDONG, DTPWeb.
+ */
+
+export const JOSH_BLE_CONSTANTS = {
+  // Service UUIDs
+  // 1. DeTong / PINGDONG primary label printer GATT service
+  SERVICE_DETONG_PRIMARY: '0000ff00-0000-1000-8000-00805f9b34fb',
+  SERVICE_DETONG_SECONDARY: '0000ff10-0000-1000-8000-00805f9b34fb',
+  
+  // 2. ISSC / Microchip Transparent UART serial service used by LD0801 hardware
+  SERVICE_ISSC_TRANSPARENT_UART: '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+
+  // 3. Classic Bluetooth Serial Port Profile (SPP)
+  SERVICE_CLASSIC_SPP: '00001101-0000-1000-8000-00805f9b34fb',
+
+  // Characteristic UUIDs
+  // DeTong Write / Data Characteristic
+  CHAR_DETONG_WRITE: '0000ff02-0000-1000-8000-00805f9b34fb',
+  CHAR_DETONG_READ_NOTIFY: '0000ff01-0000-1000-8000-00805f9b34fb',
+
+  // ISSC Transparent Write / Data Characteristic
+  CHAR_ISSC_RX_WRITE: '49535343-8841-43f4-a8d4-ecbe34729bb3',
+  CHAR_ISSC_TX_NOTIFY: '49535343-1e4d-4bd9-ba61-23c647249616',
+
+  // Known JOSH Bluetooth Device Name prefixes
+  NAME_PREFIXES: [
+    'ld0801',
+    'dp27',
+    'dp-27',
+    'detong',
+    'josh',
+    'dtp',
+    'lp50',
+    'dothantech',
+  ],
+
+  // Known USB Hardware IDs for JOSH
+  USB_VID_PIDS: [
+    '4B43:2D37',
+    '3533:5A11',
+    '4B43',
+    '2D37',
+    '3533',
+  ],
+
+  // Timeouts in milliseconds
+  TIMEOUTS: {
+    USB_DETECTION_MS: 15000,
+    DRIVER_INSTALLATION_MS: 45000,
+    BLE_SCAN_MS: 15000,
+    BLE_CONNECT_MS: 12000,
+    GATT_DISCOVERY_MS: 10000,
+    PRINT_EXECUTION_MS: 15000,
+  },
+
+  // Error Codes
+  ERRORS: {
+    BLUETOOTH_DISABLED: 'BLE_BLUETOOTH_DISABLED',
+    NO_JOSH_FOUND: 'BLE_NO_JOSH_DEVICE_FOUND',
+    WRONG_PRINTER_DETECTED: 'BLE_WRONG_PRINTER_CROSS_DETECTED',
+    CONNECTION_FAILED: 'BLE_CONNECTION_FAILED',
+    SERVICE_DISCOVERY_FAILED: 'BLE_SERVICE_DISCOVERY_FAILED',
+    CHAR_DISCOVERY_FAILED: 'BLE_CHARACTERISTIC_DISCOVERY_FAILED',
+    WRITE_VERIFICATION_FAILED: 'BLE_WRITE_VERIFICATION_FAILED',
+    PRINT_TIMEOUT: 'BLE_PRINT_TIMEOUT',
+    USB_NOT_REMOVED: 'BLE_USB_NOT_REMOVED_BEFORE_SCAN',
+    SPOOLER_REGISTRATION_FAILED: 'BLE_SPOOLER_REGISTRATION_FAILED',
+  }
+};

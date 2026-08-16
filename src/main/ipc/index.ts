@@ -39,6 +39,30 @@ export function registerIpcHandlers(
   const veerBleService = new VeerBleService();
   veerBleService.setWindow(mainWindow);
 
+  // 21-State True BLE Setup Machine IPC Handlers
+  const { VeerBleSetupService } = require('../services/VeerBleSetupService');
+  const veerBleSetupService = VeerBleSetupService.getInstance();
+  veerBleSetupService.setWindow(mainWindow);
+
+  ipcMain.handle('veerBleSetup:start', async () => {
+    logger.info('IPC invoked: veerBleSetup:start');
+    return await veerBleSetupService.startSetup();
+  });
+
+  ipcMain.handle('veerBleSetup:cancel', async () => {
+    logger.info('IPC invoked: veerBleSetup:cancel');
+    return await veerBleSetupService.cancel();
+  });
+
+  ipcMain.handle('veerBleSetup:reset', async () => {
+    logger.info('IPC invoked: veerBleSetup:reset');
+    return await veerBleSetupService.reset();
+  });
+
+  ipcMain.handle('veerBleSetup:getState', async () => {
+    return veerBleSetupService.getState();
+  });
+
   ipcMain.handle('veerBle:scan', async () => {
     logger.info('IPC invoked: veerBle:scan');
     return await veerBleService.scan();

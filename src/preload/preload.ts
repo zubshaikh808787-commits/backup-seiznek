@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState, VeerBleBridge, VeerBleStatus, BluetoothConnectionState } from '../shared/types';
+import { SeznikApiBridge, PrinterDevice, DeviceIdentification, SystemLogEntry, SystemSettings, V1OrchestratorState, VeerBleBridge, VeerBleStatus, BluetoothConnectionState, VeerBleSetupBridge } from '../shared/types';
 
 const seznikApi: SeznikApiBridge = {
   // Window Controls
@@ -113,4 +113,17 @@ const veerBle: VeerBleBridge = {
 };
 
 contextBridge.exposeInMainWorld('veerBle', veerBle);
+
+const veerBleSetup: VeerBleSetupBridge = {
+  startSetup: () => ipcRenderer.invoke('veerBleSetup:start'),
+  cancelSetup: () => ipcRenderer.invoke('veerBleSetup:cancel'),
+  resetSetup: () => ipcRenderer.invoke('veerBleSetup:reset'),
+  getSetupState: () => ipcRenderer.invoke('veerBleSetup:getState'),
+  onSetupStateChanged: (callback: (state: any) => void) => {
+    ipcRenderer.on('veerBleSetup:stateChanged', (_event, state) => callback(state));
+  },
+};
+
+contextBridge.exposeInMainWorld('veerBleSetup', veerBleSetup);
+
 

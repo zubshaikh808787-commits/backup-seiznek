@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Printer,
   CheckCircle2,
@@ -34,6 +35,7 @@ import { RemovePrinterModal } from '../components/RemovePrinterModal';
 import { ConnectBluetoothModal } from '../components/ConnectBluetoothModal';
 
 export const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const {
     v1State,
@@ -269,6 +271,14 @@ export const Dashboard: React.FC = () => {
           </div>
 
           {/* Quick Action Buttons */}
+          <button
+            onClick={() => navigate('/ble-setup')}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-700 hover:bg-blue-100/70 text-xs font-semibold shadow-xs transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            <span>True BLE Setup</span>
+          </button>
+
           <button
             onClick={() => setIsBluetoothModalOpen(true)}
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:text-slate-900 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-all"

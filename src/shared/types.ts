@@ -515,6 +515,77 @@ export type VeerBleErrorCode =
   | 'TEST_PRINT_FAILED'
   | 'PRINT_FAILED';
 
+// 21-State Complete True BLE Setup Machine
+export type BleSetupStep =
+  | 'IDLE'
+  | 'SCANNING'
+  | 'PRINTER_FOUND'
+  | 'IDENTIFYING'
+  | 'PAIRING'
+  | 'PAIRED'
+  | 'BLE_CONNECTING'
+  | 'BLE_CONNECTED'
+  | 'GATT_READY'
+  | 'CHECKING_DRIVER'
+  | 'REQUESTING_ADMIN_PERMISSION'
+  | 'INSTALLING_DRIVER'
+  | 'VERIFYING_DRIVER'
+  | 'CREATING_OS_PRINTER'
+  | 'VERIFYING_OS_PRINTER'
+  | 'SETTING_DEFAULT'
+  | 'VERIFYING_DEFAULT'
+  | 'TEST_PRINTING'
+  | 'VERIFYING_TEST_PRINT'
+  | 'COMPLETE'
+  | 'FAILED';
+
+export type BleSetupErrorCode =
+  | 'BLE_ADAPTER_UNAVAILABLE'
+  | 'BLE_DEVICE_NOT_FOUND'
+  | 'BLE_PAIRING_FAILED'
+  | 'BLE_CONNECTION_FAILED'
+  | 'BLE_SERVICE_NOT_FOUND'
+  | 'BLE_CHARACTERISTIC_NOT_FOUND'
+  | 'DRIVER_NOT_FOUND'
+  | 'DRIVER_NOT_BLE_COMPATIBLE'
+  | 'DRIVER_INSTALL_FAILED'
+  | 'WINDOWS_PRINTER_CREATION_FAILED'
+  | 'WINDOWS_PRINTER_NOT_FOUND'
+  | 'BLE_TRANSPORT_NOT_AVAILABLE'
+  | 'DEFAULT_PRINTER_FAILED'
+  | 'TEST_PRINT_FAILED';
+
+export interface BleSetupLogEntry {
+  timestamp: string;
+  category: 'SETUP' | 'BLE' | 'DRIVER' | 'PRINTER' | 'PRINT' | 'ERROR';
+  message: string;
+  level: 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR';
+}
+
+export interface BleSetupState {
+  step: BleSetupStep;
+  stepMessage: string;
+  progressPercent: number;
+  detectedPrinterName: string | null;
+  detectedMacAddress: string | null;
+  windowsDeviceId: string | null;
+  isPaired: boolean;
+  serviceUuid: string | null;
+  characteristicUuid: string | null;
+  driverName: string | null;
+  isDriverInstalled: boolean;
+  osPrinterQueueName: string | null;
+  isOsPrinterCreated: boolean;
+  isDefaultPrinter: boolean;
+  isTestPrintSuccess: boolean;
+  errorCode: BleSetupErrorCode | null;
+  errorMessage: string | null;
+  errorDetails: string | null;
+  logs: BleSetupLogEntry[];
+  startTime: number | null;
+  endTime: number | null;
+}
+
 export interface VeerBleDevice {
   id: string;
   name: string;
@@ -557,12 +628,22 @@ export interface VeerBleBridge {
   onBleStatusChanged: (callback: (status: VeerBleStatus) => void) => void;
 }
 
+export interface VeerBleSetupBridge {
+  startSetup: () => Promise<BleSetupState>;
+  cancelSetup: () => Promise<BleSetupState>;
+  resetSetup: () => Promise<BleSetupState>;
+  getSetupState: () => Promise<BleSetupState>;
+  onSetupStateChanged: (callback: (state: BleSetupState) => void) => void;
+}
+
 declare global {
   interface Window {
     seznikApi?: SeznikApiBridge;
     veerBle?: VeerBleBridge;
+    veerBleSetup?: VeerBleSetupBridge;
   }
 }
+
 
 
 

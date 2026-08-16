@@ -44,6 +44,13 @@ export const Sidebar: React.FC = () => {
       badge: totalPrinters > 0 ? totalPrinters : undefined,
     },
     {
+      path: '/ble-setup',
+      labelKey: 'veerBleSetup',
+      defaultLabel: 'VEER BLE Setup',
+      icon: <Bluetooth className="w-4 h-4 text-blue-600" />,
+      badge: 'Auto',
+    },
+    {
       path: '/josh-setup',
       labelKey: 'joshSetup',
       defaultLabel: 'JOSH Bluetooth Setup',

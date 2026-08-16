@@ -201,6 +201,21 @@ export class BluetoothPrinterTransport {
       res = await sendRawBytesToPrinterQueue(queueName, data, 'SEZNIK Bluetooth Print Job');
     }
 
+    if (!res.success) {
+      // If spooler or serial port failed, attempt direct True BLE GATT transmission
+      logger.info(`[BluetoothPrinterTransport] Spooler write notice: ${res.message}. Attempting True BLE GATT transmission...`);
+      try {
+        const { BleTransportFactory } = await import('./BleTransportFactory');
+        const bleTransport = BleTransportFactory.getTransport();
+        const bleRes = await bleTransport.writeReceiptBuffer(data, `BLE Print Job: ${queueName}`);
+        if (bleRes.success) {
+          res = { success: true, message: bleRes.message };
+        }
+      } catch (bleErr: any) {
+        logger.warn(`[BluetoothPrinterTransport] BLE GATT fallback notice: ${bleErr.message}`);
+      }
+    }
+
     return {
       success: res.success,
       printerId: queueName,

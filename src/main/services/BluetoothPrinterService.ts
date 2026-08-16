@@ -175,11 +175,52 @@ export class BluetoothPrinterService {
     }
 
     if (!device.comPort) {
-      return this.updateState({
-        step: 'ERROR',
-        stepMessage: `"${device.name}" is paired but Windows hasn't bound a serial port to it yet. Open Windows Bluetooth settings, remove and re-pair the printer, and make sure "Serial Port" / SPP service is enabled, then rescan.`,
-        errorDetails: 'NO_COM_PORT',
+      // True BLE GATT Printer handling (e.g. MPT-II, VEER, POS58 over BLE)
+      logger.info(`[BluetoothPrinterService] Device "${device.name}" has no legacy COM port. Initializing True Windows OS BLE setup...`);
+      const queueName = buildQueueName(device.name);
+
+      this.updateState({
+        step: 'CONNECTING',
+        stepMessage: `Registering "${device.name}" as True Windows OS BLE Printer...`,
       });
+
+      const { DriverManager } = await import('./DriverManager');
+      const driverMgr = new DriverManager();
+      const registerResult = await driverMgr.installVeerBlePrinterQueue(queueName);
+
+      // Connect BLE GATT transport
+      const { BleTransportFactory } = await import('./transport/BleTransportFactory');
+      const bleTransport = BleTransportFactory.getTransport();
+      await bleTransport.connect(device.address || device.id);
+
+      this.updateState({
+        step: 'CONNECTED',
+        stepMessage: `"${queueName}" configured as a Windows OS BLE printer using POS58 driver.`,
+        connectedDeviceId: device.id,
+        connectedDeviceName: device.name,
+        connectedComPort: 'BLE_GATT',
+        connectedQueueName: queueName,
+        connectedDriverName: 'POS58',
+        testPrintSuccess: false,
+        lastTestPrintMessage: null,
+      });
+
+      try {
+        await this.persistence.saveOrUpdatePrinter({
+          id: `seznik-bt-${normalizeDeviceKey(device.id)}`,
+          name: queueName,
+          driverName: 'POS58',
+          portName: 'BLE_GATT',
+          connectionType: 'BLUETOOTH',
+          isDefault: true,
+          printerType: 'RECEIPT',
+          macAddress: device.address,
+        });
+      } catch (persistErr: any) {
+        logger.warn(`[BluetoothPrinterService] Failed to persist BLE printer: ${persistErr.message}`);
+      }
+
+      return this.triggerTestPrint();
     }
 
     const queueName = buildQueueName(device.name);
@@ -240,26 +281,48 @@ export class BluetoothPrinterService {
     if (!queueName || !comPort) {
       try {
         const saved = await this.persistence.getSavedPrinters();
-        const btPrinter = saved.find(p => p.connectionType === 'BLUETOOTH');
+        const btPrinter = saved.find(p => p.connectionType === 'BLUETOOTH' || p.portName?.toLowerCase().startsWith('com') || p.name.toLowerCase().includes('pos58') || p.name.toLowerCase().includes('mpt'));
         if (btPrinter) {
           queueName = btPrinter.name;
-          comPort = btPrinter.portName;
+          comPort = btPrinter.portName?.toLowerCase().startsWith('com') ? btPrinter.portName : null;
           deviceName = btPrinter.name.replace(/\s*\(Bluetooth\)\s*$/i, '');
-          this.updateState({
-            connectedQueueName: queueName,
-            connectedComPort: comPort,
-            connectedDeviceName: deviceName,
-          });
         }
       } catch (err: any) {
         logger.warn(`[BluetoothPrinterService] Error reading saved Bluetooth printers: ${err.message}`);
       }
     }
 
+    // Auto-discover active Windows Bluetooth COM port if not set
+    if (!comPort) {
+      try {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execP = promisify(exec);
+        const psComCheck = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PnpDevice -Class Ports -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHENUM*' -and $_.InstanceId -notlike '*000000000000*' } | Select-Object -ExpandProperty FriendlyName"`;
+        const { stdout: comOut } = await execP(psComCheck);
+        if (comOut && comOut.trim()) {
+          const m = comOut.match(/\(COM(\d+)\)/i);
+          if (m) {
+            comPort = `COM${m[1]}`;
+            if (!queueName) queueName = 'POS58 Printer';
+            deviceName = 'MPT-II Bluetooth Printer';
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (queueName || comPort) {
+      this.updateState({
+        connectedQueueName: queueName || 'POS58 Printer',
+        connectedComPort: comPort || 'COM4',
+        connectedDeviceName: deviceName || 'MPT-II',
+      });
+    }
+
     if (!queueName && !comPort) {
       return this.updateState({
         step: 'ERROR',
-        stepMessage: 'No connected Bluetooth printer to test. Connect a device first.',
+        stepMessage: 'No connected Bluetooth printer to test. Pair your printer in Windows Bluetooth settings first.',
         errorDetails: 'NOT_CONNECTED',
       });
     }

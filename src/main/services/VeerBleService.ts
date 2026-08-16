@@ -7,9 +7,13 @@ import {
 } from '../../shared/types';
 import { BleTransportFactory } from './transport/BleTransportFactory';
 import { VeerReceiptCommandGenerator } from './commands/VeerReceiptCommandGenerator';
+import { DriverManager } from './DriverManager';
+import { NativeBleSpoolerBridge } from './transport/NativeBleSpoolerBridge';
 
 export class VeerBleService {
   private transport = BleTransportFactory.getTransport();
+  private driverManager = new DriverManager();
+  private spoolerBridge = NativeBleSpoolerBridge.getInstance();
   private window: BrowserWindow | null = null;
   private autoReconnectTimer: NodeJS.Timeout | null = null;
 
@@ -18,6 +22,8 @@ export class VeerBleService {
       this.broadcastStatus(status);
       this.handleStateChange(status);
     });
+    // Start background Windows Spooler BLE bridge
+    this.spoolerBridge.startWatcher();
   }
 
   setWindow(win: BrowserWindow) {
@@ -43,7 +49,23 @@ export class VeerBleService {
 
   async connect(deviceId: string): Promise<{ success: boolean; status: VeerBleStatus; message: string }> {
     logger.info(`[VeerBleService] Connect requested for deviceId: "${deviceId}"...`);
-    return this.transport.connect(deviceId);
+    const res = await this.transport.connect(deviceId);
+    if (res.success) {
+      // Auto-configure Windows OS Printer queue
+      this.setupOsPrinter('VEER POS58 (BLE)').catch(() => {});
+    }
+    return res;
+  }
+
+  async setupOsPrinter(queueName = 'VEER POS58 (BLE)'): Promise<{ success: boolean; message: string; queueName: string }> {
+    logger.info(`[VeerBleService] Setting up Windows OS Printer queue "${queueName}"...`);
+    const driverRes = await this.driverManager.installVeerBlePrinterQueue(queueName);
+    this.spoolerBridge.startWatcher();
+    return {
+      success: driverRes.success,
+      message: driverRes.log,
+      queueName: driverRes.queueName,
+    };
   }
 
   async disconnect(): Promise<{ success: boolean; message: string }> {
@@ -86,6 +108,16 @@ export class VeerBleService {
           message: 'BLE Test Print failed: No verified VEER printer found in range.',
         };
       }
+    }
+
+    // Send through Native Spooler BLE Bridge
+    const spoolRes = await this.spoolerBridge.sendWindowsTestPrintToQueue('VEER POS58 (BLE)');
+    if (spoolRes.success) {
+      return {
+        success: true,
+        state: 'PRINT_SUCCESS',
+        message: spoolRes.message,
+      };
     }
 
     return this.transport.testPrint();

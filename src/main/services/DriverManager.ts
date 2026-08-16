@@ -174,58 +174,60 @@ export class DriverManager {
           }
         } catch (eDrv) {}
 
-        // Dynamically discover active USB printer port for VEER (e.g. OLIVETTIPRT80, USB006, USB003)
-        const psGetPorts = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterPort -ErrorAction SilentlyContinue | Select-Object Name, Description | ConvertTo-Json"`;
+        // Dynamically discover active printer port for VEER (Active Bluetooth COM port e.g. COM4: or active USB)
         let targetPort = 'USB001';
         try {
-          const { stdout } = await execPromise(psGetPorts);
-          if (stdout && stdout.trim() !== '') {
-            const parsed = JSON.parse(stdout);
-            const portList: any[] = Array.isArray(parsed) ? parsed : [parsed];
+          // 1. Check for active Bluetooth SPP COM ports (e.g. MPT-II on COM4)
+          const psComCheck = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PnpDevice -Class Ports -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHENUM*' -and $_.InstanceId -notlike '*000000000000*' } | Select-Object -ExpandProperty FriendlyName"`;
+          const { stdout: comOut } = await execPromise(psComCheck);
+          if (comOut && comOut.trim()) {
+            const m = comOut.match(/\(COM(\d+)\)/i);
+            if (m) {
+              targetPort = `COM${m[1]}:`;
+              try {
+                await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "if (-not (Get-PrinterPort -Name '${targetPort}')) { Add-PrinterPort -Name '${targetPort}' }"`);
+              } catch (e) {}
+            }
+          }
 
-            let currentPort = '';
-            try {
-              const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue).PortName"`);
-              if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
-            } catch (e) {}
+          // 2. If not on Bluetooth COM, check Windows USB printer ports
+          if (!targetPort.toLowerCase().startsWith('com')) {
+            const psGetPorts = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterPort -ErrorAction SilentlyContinue | Select-Object Name, Description | ConvertTo-Json"`;
+            const { stdout } = await execPromise(psGetPorts);
+            if (stdout && stdout.trim() !== '') {
+              const parsed = JSON.parse(stdout);
+              const portList: any[] = Array.isArray(parsed) ? parsed : [parsed];
 
-            const specificPorts = portList.filter((p: any) => {
-              const desc = String(p.Description || '').toLowerCase();
-              const name = String(p.Name || '').toLowerCase();
-              return desc.includes('olivetti') || desc.includes('prt80') || desc.includes('pos58') || desc.includes('veer') || desc.includes('58') || name.includes('pos58');
-            });
+              let currentPort = '';
+              try {
+                const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue).PortName"`);
+                if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
+              } catch (e) {}
 
-            if (specificPorts.length > 0) {
-              const matchCurrent = specificPorts.find((p: any) => String(p.Name || '').toLowerCase() === currentPort.toLowerCase());
-              if (matchCurrent) {
-                targetPort = matchCurrent.Name;
-              } else {
-                specificPorts.sort((a: any, b: any) => {
-                  const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
-                  const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                  return numB - numA;
-                });
-                targetPort = specificPorts[0].Name;
-              }
-            } else {
-              const genericUsbPorts = portList.filter((p: any) => {
+              const specificPorts = portList.filter((p: any) => {
                 const desc = String(p.Description || '').toLowerCase();
                 const name = String(p.Name || '').toLowerCase();
-                return name.startsWith('usb') && !desc.includes('dp27') && !desc.includes('detong') && !desc.includes('josh') && desc !== 'virtual printer port for usb';
+                return desc.includes('olivetti') || desc.includes('prt80') || desc.includes('pos58') || desc.includes('veer') || desc.includes('58') || name.includes('pos58');
               });
-              if (genericUsbPorts.length > 0) {
-                genericUsbPorts.sort((a: any, b: any) => {
-                  const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
-                  const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                  return numB - numA;
-                });
-                targetPort = genericUsbPorts[0].Name;
+
+              if (specificPorts.length > 0) {
+                const matchCurrent = specificPorts.find((p: any) => String(p.Name || '').toLowerCase() === currentPort.toLowerCase());
+                if (matchCurrent) {
+                  targetPort = matchCurrent.Name;
+                } else {
+                  specificPorts.sort((a: any, b: any) => {
+                    const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+                    const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+                    return numB - numA;
+                  });
+                  targetPort = specificPorts[0].Name;
+                }
               }
             }
           }
         } catch (ePort) {}
 
-        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; if (-not (Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'POS58 Printer' -DriverName '${matchedDriver}' -PortName '${targetPort}' -ErrorAction SilentlyContinue } else { Set-Printer -Name 'POS58 Printer' -PortName '${targetPort}' -ErrorAction SilentlyContinue }"`;
+        const psEnsureQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; if (-not (Get-PrinterPort -Name '${targetPort}')) { Add-PrinterPort -Name '${targetPort}' -ErrorAction SilentlyContinue }; Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; if (-not (Get-Printer -Name 'POS58 Printer' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'POS58 Printer' -DriverName '${matchedDriver}' -PortName '${targetPort}' -ErrorAction SilentlyContinue } else { Set-Printer -Name 'POS58 Printer' -PortName '${targetPort}' -ErrorAction SilentlyContinue }"`;
         await execPromise(psEnsureQueue);
         logger.info(`[DriverManager] Ensured OS Spooler Queue "POS58 Printer" using driver "${matchedDriver}" on port "${targetPort}" ✓`);
 
@@ -236,6 +238,79 @@ export class DriverManager {
       }
     }
     return { success: true, log: 'VEER Driver package execution completed.' };
+  }
+
+  /**
+   * Installs and configures True Windows OS BLE Printer Queue "VEER POS58 (BLE)".
+   * Strictly avoids COM and USB ports.
+   */
+  async installVeerBlePrinterQueue(queueName = 'VEER POS58 (BLE)'): Promise<{ success: boolean; log: string; queueName: string }> {
+    logger.info(`[DriverManager] Configuring True Windows OS BLE Printer Queue "${queueName}"...`);
+    if (os.platform() !== 'win32') {
+      return { success: false, log: 'Windows printer installation is only supported on Windows.', queueName };
+    }
+
+    try {
+      // Step 1: Discover or Install POS58 driver
+      const psGetDrivers = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PrinterDriver -ErrorAction SilentlyContinue | Select-Object Name | ConvertTo-Json"`;
+      let matchedDriver = 'POS58';
+      try {
+        const { stdout } = await execPromise(psGetDrivers);
+        if (stdout && stdout.trim() !== '') {
+          const parsed = JSON.parse(stdout);
+          const drvList: any[] = Array.isArray(parsed) ? parsed : [parsed];
+          const found = drvList.find((d: any) => {
+            const dName = String(d.Name || '').toLowerCase();
+            return dName.includes('pos58') || dName.includes('pos-58') || dName.includes('58mm') || dName.includes('veer');
+          });
+          if (found && found.Name) {
+            matchedDriver = found.Name;
+          }
+        }
+      } catch (eDrv) {}
+
+      // If POS58 driver is not in driver store, run installer
+      if (!matchedDriver || matchedDriver === '') {
+        await this.installVeerDriverPackage();
+        matchedDriver = 'POS58';
+      }
+
+      // Step 2: Ensure dedicated BLE Printer Queue in Windows Spooler
+      const esc = (s: string) => s.replace(/'/g, "''");
+      const psQueueCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "
+        $ErrorActionPreference = 'SilentlyContinue';
+        Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -Type DWord -Force;
+        if (-not (Get-Printer -Name '${esc(queueName)}' -ErrorAction SilentlyContinue)) {
+          Add-Printer -Name '${esc(queueName)}' -DriverName '${esc(matchedDriver)}' -PortName 'nul:' -PrintProcessor 'winprint' -DataType 'RAW' -ErrorAction SilentlyContinue
+        } else {
+          Set-Printer -Name '${esc(queueName)}' -DriverName '${esc(matchedDriver)}' -PortName 'nul:' -PrintProcessor 'winprint' -DataType 'RAW' -ErrorAction SilentlyContinue
+        }
+        # Set as Default Printer
+        (New-Object -ComObject WScript.Network).SetDefaultPrinter('${esc(queueName)}');
+        (Get-WmiObject -Class Win32_Printer -Filter \\"Name='${esc(queueName)}'\\").SetDefaultPrinter();
+      "`;
+
+      await execPromise(psQueueCmd);
+      logger.info(`[DriverManager] Created & Configured True OS BLE Printer Queue "${queueName}" with driver "${matchedDriver}" ✓`);
+
+      // Verify printer queue
+      const verifyCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[bool](Get-Printer -Name '${esc(queueName)}' -ErrorAction SilentlyContinue)"`;
+      const { stdout: verifyOut } = await execPromise(verifyCmd);
+      const isVerified = (verifyOut || '').trim().toLowerCase() === 'true';
+
+      return {
+        success: isVerified,
+        log: `Windows OS Printer "${queueName}" created using driver "${matchedDriver}" and set as default printer.`,
+        queueName,
+      };
+    } catch (err: any) {
+      logger.error(`[DriverManager] Error creating OS BLE printer queue: ${err.message}`);
+      return {
+        success: false,
+        log: `Failed to create OS BLE printer queue: ${err.message}`,
+        queueName,
+      };
+    }
   }
 
   private async installDevDriverPackage(): Promise<{ success: boolean; log: string }> {

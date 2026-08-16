@@ -270,7 +270,21 @@ export class WindowsUsbTransport implements UsbPrinterTransport {
           if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
         } catch (e) {}
 
+        if (currentPort.toLowerCase().startsWith('com')) {
+          return currentPort;
+        }
+
+        // If VEER, check if an active Bluetooth serial port (e.g. COM4) is connected
         if (brand === 'VEER') {
+          try {
+            const psComCheck = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PnpDevice -Class Ports -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHENUM*' -and $_.InstanceId -notlike '*000000000000*' } | Select-Object -ExpandProperty FriendlyName"`;
+            const { stdout: comOut } = await execPromise(psComCheck);
+            if (comOut && comOut.trim()) {
+              const m = comOut.match(/\(COM(\d+)\)/i);
+              if (m) return `COM${m[1]}`;
+            }
+          } catch (e) {}
+
           const specificPorts = portList.filter((p: any) => {
             const desc = String(p.Description || '').toLowerCase();
             const name = String(p.Name || '').toLowerCase();

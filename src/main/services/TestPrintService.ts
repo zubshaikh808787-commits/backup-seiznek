@@ -395,7 +395,7 @@ export class TestPrintService {
       let channelAError = '';
       let channelBError = '';
       if (os.platform() === 'win32') {
-        // Check if target printer is a Bluetooth COM port printer (e.g. MPT-II on COM4)
+        // Step 1: Detect current printer queue port & active Bluetooth COM ports
         let isBluetoothPrinter = printerName.toLowerCase().includes('bluetooth') || printerName.toLowerCase().includes('mpt');
         let currentPort = '';
         try {
@@ -403,9 +403,29 @@ export class TestPrintService {
           if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
         } catch (e) {}
 
-        if (currentPort.toLowerCase().startsWith('com') || isBluetoothPrinter) {
-          const targetPort = currentPort || 'COM4';
-          logger.info(`[TestPrintService] Bluetooth/Serial target detected on "${targetPort}". Streaming raw payload directly.`);
+        // Check for active outbound Bluetooth SPP COM ports (excluding inbound 000000000000)
+        let activeBtComPort = '';
+        try {
+          const psComCheck = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-PnpDevice -Class Ports -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'BTHENUM*' -and $_.InstanceId -notlike '*000000000000*' } | Select-Object -ExpandProperty FriendlyName"`;
+          const { stdout: btOut } = await execPromise(psComCheck);
+          if (btOut && btOut.trim()) {
+            const m = btOut.match(/\(COM(\d+)\)/i);
+            if (m) activeBtComPort = `COM${m[1]}`;
+          }
+        } catch (e) {}
+
+        const isSerialOrBt = currentPort.toLowerCase().startsWith('com') || isBluetoothPrinter || (!currentPort.toLowerCase().startsWith('usb') && activeBtComPort);
+
+        if (isSerialOrBt || (activeBtComPort && (printerName.toLowerCase().includes('pos58') || printerName.toLowerCase().includes('veer')))) {
+          const targetPort = currentPort.toLowerCase().startsWith('com') ? currentPort.replace(/:/g, '') : (activeBtComPort || 'COM4');
+          logger.info(`[TestPrintService] Bluetooth/Serial target detected on "${targetPort}". Syncing queue and streaming raw payload.`);
+
+          // Ensure OS Spooler queue is bound to this COM port and cleared of stuck jobs
+          try {
+            const psSyncQueue = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; if (-not (Get-PrinterPort -Name '${targetPort}:')) { Add-PrinterPort -Name '${targetPort}:' }; Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue | Get-PrintJob -ErrorAction SilentlyContinue | Where-Object { \\$_.JobStatus -like '*Error*' } | Remove-PrintJob -ErrorAction SilentlyContinue; Set-Printer -Name '${printerName}' -PortName '${targetPort}:' -ErrorAction SilentlyContinue"`;
+            await execPromise(psSyncQueue);
+          } catch (e) {}
+
           const serRes = await sendRawBytesToSerialPort(targetPort, Buffer.from(payload, 'latin1'), jobLabel);
           
           // Cleanup any stuck error jobs
@@ -420,17 +440,14 @@ export class TestPrintService {
           if (serRes.success) {
             return {
               success: true,
-              message: `Test print delivered to Bluetooth printer "${printerName}" on ${targetPort} directly ✓`,
+              message: `Test print delivered to printer "${printerName}" on ${targetPort} directly ✓`,
             };
           } else {
-            return {
-              success: false,
-              message: `Bluetooth print failed on ${targetPort}: ${serRes.message}`,
-            };
+            logger.warn(`[TestPrintService] Direct serial to ${targetPort} returned: ${serRes.message}. Attempting WinSpool queue fallback...`);
           }
         }
 
-        let resolvedActivePort = 'USB003';
+        let resolvedActivePort = 'USB001';
         try {
           const isVeerQueue = printerName.toLowerCase().includes('pos58') || printerName.toLowerCase().includes('veer') || printerName.toLowerCase().includes('receipt');
           if (isVeerQueue) {
@@ -440,43 +457,33 @@ export class TestPrintService {
               const parsed = JSON.parse(stdout);
               const portList: any[] = Array.isArray(parsed) ? parsed : [parsed];
 
-              let currentPort = '';
+              let currentPortName = '';
               try {
                 const { stdout: prtOut } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Printer -Name '${printerName}' -ErrorAction SilentlyContinue).PortName"`);
-                if (prtOut && prtOut.trim()) currentPort = prtOut.trim();
+                if (prtOut && prtOut.trim()) currentPortName = prtOut.trim();
               } catch (e) {}
 
-              const specificPorts = portList.filter((p: any) => {
-                const desc = String(p.Description || '').toLowerCase();
-                const name = String(p.Name || '').toLowerCase();
-                return desc.includes('olivetti') || desc.includes('prt80') || desc.includes('pos58') || desc.includes('veer') || desc.includes('58') || name.includes('pos58');
-              });
-
-              if (specificPorts.length > 0) {
-                const matchCurrent = specificPorts.find((p: any) => String(p.Name || '').toLowerCase() === currentPort.toLowerCase());
-                if (matchCurrent) {
-                  resolvedActivePort = matchCurrent.Name;
-                } else {
-                  specificPorts.sort((a: any, b: any) => {
-                    const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
-                    const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                    return numB - numA;
-                  });
-                  resolvedActivePort = specificPorts[0].Name;
-                }
+              if (currentPortName.toLowerCase().startsWith('com')) {
+                resolvedActivePort = currentPortName;
               } else {
-                const genericUsbPorts = portList.filter((p: any) => {
+                const specificPorts = portList.filter((p: any) => {
                   const desc = String(p.Description || '').toLowerCase();
                   const name = String(p.Name || '').toLowerCase();
-                  return name.startsWith('usb') && !desc.includes('dp27') && !desc.includes('detong') && !desc.includes('josh') && desc !== 'virtual printer port for usb';
+                  return desc.includes('olivetti') || desc.includes('prt80') || desc.includes('pos58') || desc.includes('veer') || desc.includes('58') || name.includes('pos58');
                 });
-                if (genericUsbPorts.length > 0) {
-                  genericUsbPorts.sort((a: any, b: any) => {
-                    const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
-                    const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
-                    return numB - numA;
-                  });
-                  resolvedActivePort = genericUsbPorts[0].Name;
+
+                if (specificPorts.length > 0) {
+                  const matchCurrent = specificPorts.find((p: any) => String(p.Name || '').toLowerCase() === currentPortName.toLowerCase());
+                  if (matchCurrent) {
+                    resolvedActivePort = matchCurrent.Name;
+                  } else {
+                    specificPorts.sort((a: any, b: any) => {
+                      const numA = parseInt(String(a.Name || '').replace(/\D/g, '') || '0', 10);
+                      const numB = parseInt(String(b.Name || '').replace(/\D/g, '') || '0', 10);
+                      return numB - numA;
+                    });
+                    resolvedActivePort = specificPorts[0].Name;
+                  }
                 }
               }
 

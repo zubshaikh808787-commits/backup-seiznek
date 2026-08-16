@@ -82,17 +82,22 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   const handleRunTestPrint = async (printer?: any) => {
-    const isBt = printer ? (printer.connectionType === 'BLUETOOTH' || (printer.name && printer.name.includes('(Bluetooth)'))) : false;
+    const isBt = printer ? (printer.connectionType === 'BLUETOOTH' || (printer.name && printer.name.includes('(Bluetooth)')) || (printer.portName && printer.portName.toLowerCase().includes('com'))) : false;
     if (isBt) {
       setTestPrintStatus('Sending test print to Bluetooth printer...');
-      await triggerBluetoothTestPrint();
-      setTestPrintStatus('Bluetooth test receipt sent ✓ Check physical printout.');
-      setTimeout(() => setTestPrintStatus(null), 4000);
+      if (window.seznikApi) {
+        const state = await window.seznikApi.triggerBluetoothTestPrint();
+        setTestPrintStatus(state.lastTestPrintMessage || state.stepMessage || (state.testPrintSuccess ? 'Bluetooth test receipt sent ✓ Check physical printout.' : 'Bluetooth test print failed.'));
+      } else {
+        await triggerBluetoothTestPrint();
+        setTestPrintStatus('Bluetooth test receipt sent ✓ Check physical printout.');
+      }
+      setTimeout(() => setTestPrintStatus(null), 4500);
     } else {
       setTestPrintStatus(t('testPrintStatus', 'Printing test page...'));
       const res = await triggerV1TestPrint();
       setTestPrintStatus(res.message || 'Test print submitted');
-      setTimeout(() => setTestPrintStatus(null), 4000);
+      setTimeout(() => setTestPrintStatus(null), 4500);
     }
   };
 

@@ -119,6 +119,12 @@ export class BluetoothDiscoveryService {
       const comMatch = friendly.match(/\(COM(\d+)\)/i);
       if (!comMatch) continue;
       const comPort = `COM${comMatch[1]}`;
+
+      // Ignore dummy/inbound local endpoints with 000000000000
+      if (instanceId.includes('000000000000')) {
+        continue;
+      }
+
       availableComPorts.push(comPort);
 
       const mac = this.extractMacAddress(instanceId);

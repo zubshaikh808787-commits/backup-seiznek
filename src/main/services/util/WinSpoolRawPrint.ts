@@ -91,13 +91,40 @@ if (-not $res) {
 }
 `;
 
-// Direct Win32 Serial Port streaming for Bluetooth SPP / RFCOMM ports (e.g. COM4).
-// Bypasses the Windows Spooler service timeout to stream ESC/POS bytes directly.
+// Direct Win32 / .NET Serial Port streaming for Bluetooth SPP / RFCOMM ports (e.g. COM4).
+// Bypasses Windows Spooler timeouts to stream ESC/POS bytes directly.
 const DIRECT_SERIAL_SCRIPT_CONTENT = `param(
     [string]$PortName,
     [string]$FilePath
 )
 
+if (-not (Test-Path $FilePath)) {
+    Write-Error "File not found: $FilePath"
+    exit 1
+}
+
+$cleanPort = $PortName.Replace(":", "").Trim()
+[byte[]]$bytes = [System.IO.File]::ReadAllBytes($FilePath)
+
+# Channel 1: .NET SerialPort with DTR/RTS enabled & explicit flush
+try {
+    $port = New-Object System.IO.Ports.SerialPort $cleanPort, 9600, "None", 8, "One"
+    $port.ReadTimeout = 4000
+    $port.WriteTimeout = 4000
+    $port.DtrEnable = $true
+    $port.RtsEnable = $true
+    $port.Open()
+    $port.Write($bytes, 0, $bytes.Length)
+    Start-Sleep -Milliseconds 250
+    $port.Close()
+    $port.Dispose()
+    Write-Host "[DirectSerial] SUCCESS: Delivered $($bytes.Length) bytes to $cleanPort via SerialPort!"
+    exit 0
+} catch {
+    Write-Warning "[DirectSerial] SerialPort notice: $($_.Exception.Message)"
+}
+
+# Channel 2: Win32 CreateFile / WriteFile Fallback
 $code = @"
 using System;
 using System.IO;
@@ -139,8 +166,8 @@ public class DirectSerialPrinterHelper {
         if (!File.Exists(filePath)) return false;
         byte[] bytes = File.ReadAllBytes(filePath);
 
-        string cleanPort = portName.Replace(":", "").Trim();
-        string devicePath = @"\\\\.\\" + cleanPort;
+        string clean = portName.Replace(":", "").Trim();
+        string devicePath = @"\\\\.\\" + clean;
 
         SafeFileHandle handle = CreateFile(devicePath, 0xC0000000, 0, IntPtr.Zero, 3, 0, IntPtr.Zero);
         if (handle.IsInvalid) {
@@ -170,9 +197,9 @@ try {
     }
 } catch {}
 
-$res = [DirectSerialPrinterHelper]::SendFileToPort($PortName, $FilePath)
+$res = [DirectSerialPrinterHelper]::SendFileToPort($cleanPort, $FilePath)
 if (-not $res) {
-    Write-Warning "Direct serial write returned false for $PortName."
+    Write-Warning "Direct serial write returned false for $cleanPort."
     exit 1
 }
 `;

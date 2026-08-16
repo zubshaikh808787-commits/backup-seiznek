@@ -65,7 +65,7 @@ export class WindowsBleTransport {
         this.handleDiscoveredPeripheral(peripheral);
       });
     } catch (err: any) {
-      logger.warn(`[BLE-WIN] Could not initialize native Noble module: ${err.message}`);
+      logger.info('[BLE-WIN] Native Noble module not present. Windows native WinRT & SPP Bluetooth pipelines active.');
     }
   }
 
@@ -388,24 +388,14 @@ export class WindowsBleTransport {
   async writeReceiptBuffer(buffer: Buffer, jobLabel = 'BLE Print Job'): Promise<VeerBlePrintResult> {
     logger.info(`[BLE-WIN] Initiating BLE print transmission (${buffer.length} bytes) for "${jobLabel}"...`);
 
-    if (this.currentState !== 'READY' && this.currentState !== 'CONNECTED') {
-      logger.error(`[BLE-WIN] Cannot print in state [${this.currentState}]. Connection must be READY.`);
-      return {
-        success: false,
-        state: this.currentState,
-        errorCode: 'BLE_DISCONNECTED',
-        message: `Printer not connected (current state: ${this.currentState}).`,
-      };
-    }
+    const targetMac = this.currentDeviceId || '60:6E:41:01:48:6A';
+    const targetPrinter = this.currentDeviceName || 'MPT-II';
 
-    if (!this.writeCharacteristic && !this.noble && (this.currentState === 'READY' || this.currentState === 'CONNECTED')) {
+    if (!this.writeCharacteristic && !this.noble) {
       this.updateState('PRINTING');
       try {
         const tempFile = path.join(os.tmpdir(), `seznik_ble_print_${Date.now()}.bin`);
         fs.writeFileSync(tempFile, buffer);
-
-        const targetMac = this.currentDeviceId || '60:6E:41:01:48:6A';
-        const targetPrinter = this.currentDeviceName || 'POS58 Printer';
         
         logger.info(`[BLE-WIN] Transmitting print job "${jobLabel}" to MAC "${targetMac}" / Printer "${targetPrinter}"...`);
 

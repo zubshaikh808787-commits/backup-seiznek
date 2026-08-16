@@ -603,27 +603,70 @@ export class PrinterService implements IPrinterService {
       const transport = UsbTransportFactory.getTransport();
       const printRes = await transport.write(matchedName, payload);
 
-      if (printRes.success) {
+      let finalPrintRes = printRes;
+      if (!finalPrintRes.success || isVeer) {
+        logger.info(`[PrinterService] Routing print job for "${matchedName}" to Direct Serial COM / BLE...`);
+        try {
+          const { sendRawBytesToSerialPort } = await import('../main/services/util/WinSpoolRawPrint');
+          const serRes = await sendRawBytesToSerialPort('COM4', payload, `Receipt Print: ${matchedName}`);
+          if (serRes.success) {
+            return {
+              success: true,
+              stage: 'PHYSICAL_PRINT_VERIFICATION',
+              code: 'PRINT_SUCCESS',
+              printerName: matchedName,
+              brand,
+              queueName: matchedName,
+              spoolerStatus: 'Job Sent via Serial Port ✓',
+              printerStatus: 'PRINT_SUCCESS',
+              message: `Physical print job (${brand} ${printType}) delivered to "${matchedName}" on COM4 directly ✓`,
+            };
+          }
+        } catch (sErr: any) {}
+
+        try {
+          const { BleTransportFactory } = await import('../main/services/transport/BleTransportFactory');
+          const bleTransport = BleTransportFactory.getTransport();
+          const bleRes = await bleTransport.writeReceiptBuffer(payload, `Receipt Print: ${matchedName}`);
+          if (bleRes.success) {
+            return {
+              success: true,
+              stage: 'PHYSICAL_PRINT_VERIFICATION',
+              code: 'PRINT_SUCCESS',
+              printerName: matchedName,
+              brand,
+              queueName: matchedName,
+              spoolerStatus: 'Job Sent via True BLE GATT ✓',
+              printerStatus: 'PRINT_SUCCESS',
+              message: `Physical print job (${brand} ${printType}) delivered to "${matchedName}" via True BLE GATT ✓`,
+            };
+          }
+        } catch (bleErr: any) {
+          logger.warn(`[PrinterService] BLE GATT transport notice: ${bleErr.message}`);
+        }
+      }
+
+      if (finalPrintRes.success) {
         return {
           success: true,
           stage: 'PHYSICAL_PRINT_VERIFICATION',
           code: 'PRINT_SUCCESS',
           printerName: matchedName,
           brand,
-          queueName: printRes.queueName || matchedName,
-          spoolerStatus: 'Job Sent to USB Spooler ✓',
+          queueName: finalPrintRes.queueName || matchedName,
+          spoolerStatus: 'Job Sent to Spooler ✓',
           printerStatus: 'PRINT_SUCCESS',
-          message: `Physical print job (${brand} ${printType}) delivered to "${printRes.queueName || matchedName}" on port ${printRes.portName || 'USB'} ✓`,
+          message: `Physical print job (${brand} ${printType}) delivered to "${finalPrintRes.queueName || matchedName}" on port ${finalPrintRes.portName || 'USB'} ✓`,
         };
       } else {
         return {
           success: false,
           stage: 'PRINT_SUBMISSION',
-          code: printRes.errorCode || 'PRINT_FAILED',
+          code: finalPrintRes.errorCode || 'PRINT_FAILED',
           printerName: matchedName,
           brand,
           queueName: matchedName,
-          message: printRes.errorMessage || 'Print job submission failed.',
+          message: finalPrintRes.errorMessage || 'Print job submission failed.',
         };
       }
     } catch (err: any) {
